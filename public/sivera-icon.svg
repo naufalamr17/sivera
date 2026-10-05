@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">SIVERA incident monitoring</title>
+  <rect width="64" height="64" rx="15" fill="#8064ef"/>
+  <path d="M32 10 49 17v13c0 11-7 19-17 24-10-5-17-13-17-24V17Z" fill="#352967" stroke="#f1edf6" stroke-linejoin="round" stroke-width="3.5"/>
+  <path d="M20 33h7l4-9 4 17 4-8h5" fill="none" stroke="#a9eadc" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5"/>
+</svg>

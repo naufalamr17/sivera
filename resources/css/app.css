@@ -247,6 +247,9 @@ label small { color: var(--muted-foreground); font-weight: 400; }
 .timeline p { margin: 8px 0; color: var(--muted-foreground); }
 .empty { padding: 36px 20px; color: var(--muted-foreground); text-align: center; }
 .pagination { margin: 20px 0; }
+.retention-notice { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; line-height: 1.7; }
+.issue-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
+.issue-pagination-actions { display: flex; align-items: center; gap: 8px; }
 .tabular { font-variant-numeric: tabular-nums; }
 .login-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; background: #fafafa; }
 .login-card { width: min(100%, 420px); padding: 32px; background: white; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px #00000005; }

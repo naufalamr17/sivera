@@ -164,6 +164,8 @@ Email summary recipients are managed in SIVERA under **Notifications**. Reporter
 
 If the test fails, check the HTTPS URL and certificate, outbound network access, application slug, registered environment, client ID, secret, and server clock. A `401` indicates an authentication or security check failed; `422` indicates an invalid payload; `429` indicates the configured rate limit. The package manifest allows Laravel 10–13, but installation and delivery must still be checked in each target application.
 
+If `/health` is reachable but the source PHP process reports `cURL error 28`, its default 0.5-second connection timeout may be too short for that network. In the **source application**, set `SIVERA_CONNECT_TIMEOUT=3` and `SIVERA_TIMEOUT=8`, then run `php artisan config:clear` and retry `php artisan sivera:test`. These are optional network-specific overrides; a larger timeout can delay exception reporting when SIVERA is unavailable. A source application using queued reporting can keep that delay in its worker.
+
 ## Event API
 
 `POST /api/v1/events` receives JSON from registered applications. The recommended client is the bundled reporter. A valid event contains:
@@ -247,15 +249,21 @@ The dashboard defaults to the last seven calendar days, including today, in `SIV
 
 Counts use **event receipt timestamps**, converted from local midnight boundaries to UTC. They do not use lifetime issue counters or sampled stack-trace details. The Applications card counts all registered applications. Open, critical, and resolved counts include only issues with events received in the selected period and reflect their **current** status/severity. Rankings include ERROR and CRITICAL only. Top errors show reported exception/message and location, which are evidence for investigation rather than an automatic root-cause diagnosis.
 
+Recent issues are paginated at 10 per page. Pagination preserves the selected dates, and live polling stays on the selected page. The top-five rankings remain bounded summaries. Notification recipients and delivery history each have independent 20-row pagination; the other management lists already paginate.
+
 Retention settings are defined in `.env.example` and [`config/sivera.php`](config/sivera.php):
 
 | Data | Default retention |
 | --- | ---: |
-| Occurrences and API request logs | 30 days |
-| Notification logs | 90 days |
-| Event receipts, audit logs, and eligible issues | 365 days |
+| Occurrence details / stack traces | 3 calendar years |
+| API request logs and notification logs | 3 calendar years |
+| Event receipts, audit logs, and issues of every status | 3 calendar years |
 
-Cleanup removes old issues only when their status is `RESOLVED` or `IGNORED`; open issues remain available. API request logs contain request metadata, not payloads or credential secrets. Event text is sanitized before storage, and application credential secrets are encrypted at rest. Rotated credentials have a 24-hour grace period unless revoked earlier.
+Use `SIVERA_RETENTION_YEARS=3` for the shared retention policy. The minimum is three years; larger values extend retention for all historical categories. Legacy `SIVERA_*_RETENTION_DAYS` variables are no longer used, so old 30/90/365-day settings cannot shorten the new policy. After deploying, run `php artisan config:clear` or rebuild the server's configuration cache.
+
+Cleanup still runs **daily** and permanently deletes history **older than three calendar years**; it does not run only once every three years. The cutoff uses calendar-year subtraction with leap-day handling. Issues of **every status, including open issues**, are deleted when `last_seen_at` is older than the cutoff; first-seen age alone does not delete a recurring issue. Deleting an issue also removes its associated occurrences, status history, comments, and per-issue notification logs. Accounts, application registrations, credentials, and recipient settings are not removed by history cleanup. A retention notice is displayed on workspace pages.
+
+API request logs contain request metadata, not payloads or credential secrets. Event text is sanitized before storage, and application credential secrets are encrypted at rest. Rotated credentials have a 24-hour grace period unless revoked earlier.
 
 ## Project layout
 

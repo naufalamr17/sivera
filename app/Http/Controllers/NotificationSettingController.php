@@ -15,8 +15,10 @@ class NotificationSettingController extends Controller
     public function index(): View
     {
         return view('notifications.index', [
-            'rules' => NotificationRule::query()->where('channel', 'email')->where('trigger', 'daily_digest')->orderBy('name')->get(),
-            'logs' => NotificationLog::query()->with('issue', 'rule')->latest('id')->limit(20)->get(),
+            'rules' => NotificationRule::query()->where('channel', 'email')->where('trigger', 'daily_digest')->orderBy('name')->orderBy('id')
+                ->paginate(20, ['*'], 'recipients_page')->withQueryString(),
+            'logs' => NotificationLog::query()->with('issue', 'rule')->latest('id')
+                ->paginate(20, ['*'], 'deliveries_page')->withQueryString(),
         ]);
     }
 

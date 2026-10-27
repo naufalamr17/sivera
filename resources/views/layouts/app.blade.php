@@ -45,6 +45,7 @@ $workspace = [
 @if(session('status')) <div class="notice" role="status">{{ session('status') }}</div> @endif
 @if($errors->any()) <div class="notice error" role="alert">{{ $errors->first() }}</div> @endif
 @yield('content')
+<footer class="retention-notice">Monitoring history older than {{ config('sivera.retention_years', 3) }} years is automatically deleted during daily cleanup. This includes open issues whose last event is older than that period.</footer>
 <noscript><div class="notice error">Enable JavaScript for navigation, live alerts, and dashboard charts. <a href="{{ route('issues.index') }}">Open issues</a>.</div></noscript>
 </div>
 </main>

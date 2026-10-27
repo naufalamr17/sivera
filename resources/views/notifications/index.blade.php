@@ -9,9 +9,11 @@
 <tr><td class="table-title">{{ $rule->name }}</td><td>{{ $rule->target }}</td><td><span class="badge">{{ $rule->is_active ? 'Active' : 'Disabled' }}</span></td><td><a class="text-link" href="{{ route('notifications.edit', $rule) }}">Edit</a></td></tr>
 @empty <tr><td colspan="4" class="empty">Add an email recipient to receive morning summaries.</td></tr> @endforelse
 </tbody></table></div></section>
-<section class="panel"><div class="panel-head"><h2>Delivery history</h2><span class="panel-meta">Latest 20 deliveries</span></div><div class="table-scroll"><table><thead><tr><th>Created</th><th>Summary date / issue</th><th>Recipient</th><th>Status</th></tr></thead><tbody>
+<div class="pagination">{{ $rules->links() }}</div>
+<section class="panel"><div class="panel-head"><h2>Delivery history</h2><span class="panel-meta">{{ $logs->total() }} deliveries</span></div><div class="table-scroll"><table><thead><tr><th>Created</th><th>Summary date / issue</th><th>Recipient</th><th>Status</th></tr></thead><tbody>
 @forelse ($logs as $log)
 <tr><td>{{ $log->created_at }}</td><td>@if($log->digest_date){{ $log->digest_date }}@elseif($log->issue)<a class="text-link" href="{{ route('issues.show', $log->issue) }}">{{ $log->issue->exception_class }}</a>@else Historical alert @endif</td><td>{{ $log->digest_recipient ?? $log->rule?->name }}</td><td><span class="badge">{{ ucfirst($log->status) }}</span></td></tr>
 @empty <tr><td colspan="4" class="empty">No deliveries yet.</td></tr> @endforelse
 </tbody></table></div></section>
+<div class="pagination">{{ $logs->links() }}</div>
 @endsection

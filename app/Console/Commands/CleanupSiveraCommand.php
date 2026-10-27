@@ -18,15 +18,15 @@ class CleanupSiveraCommand extends Command
 {
     public function handle(): int
     {
-        $retention = config('sivera.retention');
+        $years = max(3, (int) config('sivera.retention_years', 3));
+        $cutoff = now()->subYearsNoOverflow($years);
         $deleted = [
-            'occurrences' => IssueOccurrence::query()->where('created_at', '<', now()->subDays($retention['occurrences_days']))->delete(),
-            'api_logs' => ApiRequestLog::query()->where('received_at', '<', now()->subDays($retention['api_logs_days']))->delete(),
-            'notification_logs' => NotificationLog::query()->where('created_at', '<', now()->subDays($retention['notification_logs_days']))->delete(),
-            'event_receipts' => EventReceipt::query()->where('created_at', '<', now()->subDays($retention['event_receipts_days']))->delete(),
-            'issues' => Issue::query()->whereIn('status', ['RESOLVED', 'IGNORED'])
-                ->where('last_seen_at', '<', now()->subDays($retention['issues_days']))->delete(),
-            'audit_logs' => AuditLog::query()->where('created_at', '<', now()->subDays($retention['audit_logs_days']))->delete(),
+            'occurrences' => IssueOccurrence::query()->where('created_at', '<', $cutoff)->delete(),
+            'api_logs' => ApiRequestLog::query()->where('received_at', '<', $cutoff)->delete(),
+            'notification_logs' => NotificationLog::query()->where('created_at', '<', $cutoff)->delete(),
+            'event_receipts' => EventReceipt::query()->where('created_at', '<', $cutoff)->delete(),
+            'issues' => Issue::query()->where('last_seen_at', '<', $cutoff)->delete(),
+            'audit_logs' => AuditLog::query()->where('created_at', '<', $cutoff)->delete(),
         ];
 
         $this->info('SIVERA cleanup complete: '.json_encode($deleted));

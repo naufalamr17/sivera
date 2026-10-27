@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class IssueAnalytics
 {
     /** @return array<string, mixed> */
-    public function summary(string $from, string $to): array
+    public function summary(string $from, string $to, int $issuesPage = 1): array
     {
         $timezone = config('sivera.timezone');
         $start = CarbonImmutable::parse($from, $timezone)->startOfDay()->utc();
@@ -29,6 +29,9 @@ class IssueAnalytics
             ->groupBy('applications.id', 'applications.name', 'applications.slug')
             ->orderByDesc('events')->orderBy('applications.id')->limit(5)->get();
 
+        $latest = (clone $issues)->with('application:id,name,slug')->orderByDesc('period_last_seen')->orderBy('issues.id')
+            ->paginate(10, ['issues.*', 'period.period_count', 'period.period_last_seen'], 'issues_page', $issuesPage);
+
         return [
             'from' => $from,
             'to' => $to,
@@ -38,8 +41,14 @@ class IssueAnalytics
             'critical' => (clone $issues)->where('severity', 'CRITICAL')->whereNotIn('status', ['RESOLVED', 'IGNORED'])->count(),
             'events' => (clone $receipts)->count(),
             'resolved' => (clone $issues)->where('status', 'RESOLVED')->count(),
-            'latest' => (clone $issues)->with('application:id,name,slug')->orderByDesc('period_last_seen')->orderBy('issues.id')->limit(10)
-                ->get(['issues.*', 'period.period_count', 'period.period_last_seen']),
+            'latest' => $latest->items(),
+            'latest_pagination' => [
+                'current_page' => $latest->currentPage(),
+                'last_page' => $latest->lastPage(),
+                'total' => $latest->total(),
+                'from' => $latest->firstItem(),
+                'to' => $latest->lastItem(),
+            ],
             'ranking' => $ranking,
             'top_errors' => (clone $errors)->with('application:id,name,slug')->orderByDesc('period_count')->orderBy('issues.id')->limit(5)
                 ->get(['issues.*', 'period.period_count']),

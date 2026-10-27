@@ -75,7 +75,13 @@ function Navigation({ config }) {
     return (
         <>
             <a className="workspace-brand" href={config.dashboard}>
-                <img className="workspace-logo" src={config.icon} width="34" height="34" alt="" />
+                <img
+                    className="workspace-logo"
+                    src={config.icon}
+                    width="34"
+                    height="34"
+                    alt=""
+                />
                 <span>
                     Sivera
                     <span className="brand-subtitle">
@@ -207,7 +213,9 @@ function NotificationCenter({ config }) {
                 if (!initial && data.events.length) {
                     const groups = groupEvents(data.events);
                     const latest = groups[0];
-                    const issueCount = new Set(data.events.map((event) => event.issue_id)).size;
+                    const issueCount = new Set(
+                        data.events.map((event) => event.issue_id),
+                    ).size;
                     setToast({
                         text:
                             issueCount === 1
@@ -538,6 +546,13 @@ function Dashboard({ config }) {
     const [updatedAt, setUpdatedAt] = useState(new Date());
     const [from, setFrom] = useState(config.summary.from);
     const [to, setTo] = useState(config.summary.to);
+    const issuePageUrl = (page) => {
+        const url = new URL(config.dashboard);
+        url.searchParams.set("from", data.from);
+        url.searchParams.set("to", data.to);
+        url.searchParams.set("issues_page", page);
+        return url.toString();
+    };
     useEffect(() => {
         let stopped = false;
         let timer;
@@ -547,6 +562,10 @@ function Dashboard({ config }) {
                 const url = new URL(config.endpoint);
                 url.searchParams.set("from", config.summary.from);
                 url.searchParams.set("to", config.summary.to);
+                url.searchParams.set(
+                    "issues_page",
+                    config.summary.latest_pagination.current_page,
+                );
                 const response = await fetch(url, {
                     credentials: "same-origin",
                     signal: controller.signal,
@@ -578,6 +597,7 @@ function Dashboard({ config }) {
         config.pollSeconds,
         config.summary.from,
         config.summary.to,
+        config.summary.latest_pagination.current_page,
     ]);
 
     const maxActivity = Math.max(
@@ -1001,6 +1021,60 @@ function Dashboard({ config }) {
                         </tbody>
                     </table>
                 </div>
+                <nav
+                    className="issue-pagination"
+                    aria-label="Recent issues pagination"
+                >
+                    <span>
+                        {data.latest_pagination.total
+                            ? data.latest_pagination.from +
+                              "–" +
+                              data.latest_pagination.to +
+                              " of " +
+                              formatCount(data.latest_pagination.total) +
+                              " issues"
+                            : "0 issues"}
+                    </span>
+                    <div className="issue-pagination-actions">
+                        {data.latest_pagination.current_page > 1 ? (
+                            <Button asChild variant="outline" size="sm">
+                                <a
+                                    href={issuePageUrl(
+                                        data.latest_pagination.current_page - 1,
+                                    )}
+                                    rel="prev"
+                                >
+                                    Previous
+                                </a>
+                            </Button>
+                        ) : (
+                            <Button variant="outline" size="sm" disabled>
+                                Previous
+                            </Button>
+                        )}
+                        <span>
+                            Page {data.latest_pagination.current_page} of{" "}
+                            {data.latest_pagination.last_page}
+                        </span>
+                        {data.latest_pagination.current_page <
+                        data.latest_pagination.last_page ? (
+                            <Button asChild variant="outline" size="sm">
+                                <a
+                                    href={issuePageUrl(
+                                        data.latest_pagination.current_page + 1,
+                                    )}
+                                    rel="next"
+                                >
+                                    Next
+                                </a>
+                            </Button>
+                        ) : (
+                            <Button variant="outline" size="sm" disabled>
+                                Next
+                            </Button>
+                        )}
+                    </div>
+                </nav>
             </Card>
             <div className="dashboard-footer">
                 <span>

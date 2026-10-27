@@ -29,6 +29,6 @@ class DashboardController extends Controller
         $to = $filters['to'] ?? $filters['from'] ?? $today->toDateString();
         abort_if(CarbonImmutable::parse($from)->diffInDays($to) > 365, 422, 'Choose a range of at most 366 days.');
 
-        return $analytics->summary($from, $to);
+        return $analytics->summary($from, $to, (int) ($filters['issues_page'] ?? 1));
     }
 }

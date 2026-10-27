@@ -25,6 +25,7 @@ class DashboardRequest extends FormRequest
         return [
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', ...($this->filled('from') ? ['after_or_equal:from'] : [])],
+            'issues_page' => ['sometimes', 'integer', 'between:1,100000'],
         ];
     }
 }

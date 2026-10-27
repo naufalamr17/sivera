@@ -1536,7 +1536,7 @@ The dashboard displays:
 - Hourly activity for one day; daily activity for longer ranges.
 - Top five applications by ERROR/CRITICAL event count, with distinct issue counts.
 - Top five grouped errors by period event count: exception class, stored message, application, severity, source location, route, and issue link.
-- Latest ten issues with activity in the selected period.
+- Recent issues with activity in the selected period, paginated at ten per page. Preserve the selected dates and page during polling.
 
 Use unsampled event receipts and receipt timestamps, not lifetime occurrence counters, for period counts. Reported messages explain the observed failure; they do not prove the root cause. Current severity/status can change historical summaries.
 
@@ -1888,18 +1888,23 @@ Viewer monitoring routes must be read-only. The authenticated own-account passwo
 
 # 58. Data Retention
 
-Recommended MVP retention:
+Historical monitoring data uses a shared retention policy of three calendar years:
 
 | Data | Retention |
 |---|---:|
-| Detailed Occurrences | 30 days |
-| Stack Trace | 30 days |
-| API Security Logs | 30 days |
-| Notification Logs | 90 days |
-| Issue Summary | 1 year |
-| Audit Logs | 1 year |
+| Detailed Occurrences | 3 years |
+| Stack Trace | 3 years |
+| API Security Logs | 3 years |
+| Notification Logs | 3 years |
+| Event Receipts | 3 years |
+| Issues of every status | 3 years since last event |
+| Audit Logs | 3 years |
 
-Retention must be configurable through configuration or database settings.
+Configure `SIVERA_RETENTION_YEARS=3`; the minimum is three years. Legacy per-category `SIVERA_*_RETENTION_DAYS` settings no longer apply. Use calendar-year subtraction without leap-day overflow, rather than a fixed 1,095-day approximation.
+
+Daily cleanup permanently deletes records older than the cutoff. Open issues are included when their last event is older than the cutoff. Deleting an issue cascades to its occurrences, comments, status history, and per-issue notification logs. Accounts, applications, credentials, and email recipient settings are not historical monitoring data and are not purged.
+
+Display the retention policy on authenticated workspace pages. Paginate all main record lists, including recent dashboard issues, notification recipients, and delivery history. Recipient and delivery pagination must be independent and preserve each other's query parameters.
 
 ---
 
@@ -1934,20 +1939,16 @@ must still increase for every accepted event.
 
 Laravel Scheduler must run cleanup.
 
-Suggested commands:
+Command:
 
 ```bash
-php artisan sivera:cleanup-occurrences
-php artisan sivera:cleanup-api-logs
-php artisan sivera:cleanup-notification-logs
+php artisan sivera:cleanup
 ```
 
-Example schedule:
+Schedule:
 
 ```text
-00:30 cleanup occurrences
-01:00 cleanup API logs
-01:30 cleanup notification logs
+00:30 daily cleanup in the application timezone (UTC by default)
 ```
 
 ---

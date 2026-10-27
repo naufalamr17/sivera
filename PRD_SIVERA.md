@@ -4,7 +4,7 @@
 > **Focus:** Centralized Application Error Monitoring & Incident Response  
 > **Document:** Product Requirements Document (PRD)  
 > **Target implementation:** Laravel + MySQL/MariaDB on the existing Azure Cloud Server / cPanel  
-> **Status:** MVP  
+> **Status:** MVP; notification and dashboard scope revised 2026-10-27
 > **Implementation language:** PHP / Laravel  
 > **Target consumers:** Internal Laravel applications  
 > **Note:** Release/version tracking is outside the MVP scope.
@@ -136,7 +136,6 @@ Admins can:
 - Ignore issues.
 - Manage notification rules.
 - Configure email notifications.
-- Configure Qontak notifications.
 - View API request logs.
 - View audit logs.
 - Configure retention policies.
@@ -145,7 +144,7 @@ Admins can:
 
 ## 5.2 Viewer
 
-Viewers have **read-only** access.
+Viewers have **read-only** access to monitoring and administration data. They may change their own account password after verifying the current password.
 
 Viewers can:
 
@@ -213,7 +212,7 @@ Viewers cannot:
 │        │                                     │
 │        ├─────────────► Notification          │
 │        │                  │                  │
-│        │              Email / Qontak         │
+│        │              Daily email + in-app         │
 │        ▼                                     │
 │  Admin / Viewer Dashboard                    │
 └──────────────────────────────────────────────┘
@@ -277,8 +276,8 @@ Dashboard displays error : within about 5 seconds at the default interval
 Suggested polling endpoints:
 
 ```http
-GET /api/dashboard/live-summary
-GET /api/issues/live?after={cursor}
+GET /dashboard/live-summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET /notifications/feed?after={event_receipt_id}
 ```
 
 These endpoints are only for the authenticated SIVERA dashboard and must enforce `admin` / `viewer` authorization.
@@ -399,90 +398,21 @@ MySQL / MariaDB
 
 ## Frontend
 
-The MVP frontend uses:
+The frontend uses Laravel Blade with React 19 islands, shadcn/ui components backed by Radix, Tailwind CSS 4, and Vite 8. Workspace navigation, the notification center, and dashboard are React components. Management forms and detail pages remain Blade.
 
-```text
-Laravel Blade
-+
-Alpine.js
-+
-Fetch/AJAX polling
-```
+Use a neutral, accessible interface: clear typography, restrained borders and shadows, consistent spacing, meaningful severity colors, and responsive tables. Mobile navigation uses an accessible sheet with keyboard/focus handling. Do not add decorative gradients or redundant summary cards.
 
-**Livewire is not required.**
+Authenticated Fetch polling defaults to 5 seconds and is configurable between 5 and 10 seconds:
+- `GET /dashboard/live-summary?from=YYYY-MM-DD&to=YYYY-MM-DD` returns date-filtered counters, activity buckets, latest issues, application ranking, and top errors.
+- `GET /notifications/feed?after={event_receipt_id}` returns at most 50 events per catch-up batch. Initial load returns the latest 20 events.
+- Polling updates React components without reloading the page. Retain the selected date range.
+- No stack traces, request bodies, or credentials are included in polling payloads.
+- In-app toasts and the bell work independently of email delivery.
+- Browser notifications are opt-in, require a secure context and browser support, and work while SIVERA is open. Closed-site Web Push is outside scope.
 
-Blade can still serve a near-real-time dashboard, but server-rendered Blade alone cannot update data without another request. SIVERA therefore uses lightweight JavaScript through Alpine.js / the Fetch API to fetch updates periodically without a full-page reload.
+No WebSocket server, Reverb, or Livewire is required. Compile frontend assets with `npm run build`; production does not require a Node process.
 
-Default polling interval:
-
-```text
-5 seconds
-```
-
-Allowed range:
-
-```text
-5–10 seconds
-```
-
-Example flow:
-
-```text
-Browser
-   │
-   │ GET /dashboard/live-summary
-   │ every 5 seconds
-   ▼
-SIVERA
-   │
-   ▼
-JSON with the latest changes
-   │
-   ▼
-Update selected dashboard components
-```
-
-Components updated by polling:
-
-```text
-Open Issues Counter
-Critical Issues Counter
-Events Today Counter
-Latest Issues
-Occurrence Count
-Issue Status
-Critical In-App Alert
-```
-
-Heavy historical components do not need polling every 5 seconds.
-
-Examples:
-
-```text
-Historical Chart     → manual / 60 seconds
-Audit Log            → manual / 30 seconds
-Application Summary  → 15–30 seconds
-```
-
-**Livewire may be used as an alternative UI implementation**, especially if the team wants to use `wire:poll`, but it is not an MVP dependency.
-
-Example if Livewire is used:
-
-```blade
-<div wire:poll.5s>
-    ...
-</div>
-```
-
-However, the reference architecture remains:
-
-```text
-Blade + lightweight client polling
-```
-
-This keeps SIVERA lightweight and independent of WebSocket or a long-running real-time server.
-
-The frontend choice must not add heavy dependencies when Blade, Alpine.js, and the Fetch API can provide the needed functionality.
+---
 
 ## Infrastructure
 
@@ -1286,7 +1216,7 @@ Unhandled exception → ERROR
 
 Admins can change severity.
 
-Severity may be escalated automatically based on a frequency rule during the notification phase.
+Severity is supplied on initial ingestion and can be changed by an Admin. Daily email does not escalate severity.
 
 ---
 
@@ -1598,57 +1528,30 @@ authorization
 
 # 43. Dashboard
 
-The main dashboard must show at least:
+The dashboard displays:
+- Events received in the selected date range.
+- Open and critical issues active during the selected period, using their current status/severity.
+- Total registered applications, regardless of date range.
+- Resolved issues active during the period, shown in the chart footer.
+- Hourly activity for one day; daily activity for longer ranges.
+- Top five applications by ERROR/CRITICAL event count, with distinct issue counts.
+- Top five grouped errors by period event count: exception class, stored message, application, severity, source location, route, and issue link.
+- Latest ten issues with activity in the selected period.
 
-```text
-Total Applications
-Open Issues
-Critical Issues
-Errors Today
-Resolved Issues
-```
-
-Example:
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                         SIVERA                               │
-│ Smart Integrated Visibility & Event Response Application    │
-├──────────────────────────────────────────────────────────────┤
-│ Applications  8   Open  14   Critical  2   Today  67        │
-├──────────────────────────────────────────────────────────────┤
-│ Application │ Error             │ Count │ Severity │ Status  │
-├─────────────┼───────────────────┼───────┼──────────┼─────────┤
-│ SIBARIS     │ QueryException    │ 82    │ Critical │ New     │
-│ ITAM        │ TypeError         │ 14    │ Error    │ Invest. │
-│ SACUTI      │ SMTP Timeout      │ 8     │ Warning  │ Resolved│
-└──────────────────────────────────────────────────────────────┘
-```
+Use unsampled event receipts and receipt timestamps, not lifetime occurrence counters, for period counts. Reported messages explain the observed failure; they do not prove the root cause. Current severity/status can change historical summaries.
 
 ---
 
 # 44. Dashboard Filters
 
-The issue list must support filters for:
+Dashboard:
+- Inclusive From/To dates, defaulting to the last seven calendar days including today in `SIVERA_TIMEZONE` (Asia/Jakarta by default).
+- Maximum range: 366 calendar days.
+- Convert local midnight boundaries to UTC and use an exclusive next-day upper bound.
+- Validate dates and reject reversed or invalid ranges on both HTML and polling endpoints.
+- Polling retains dates; the Last 7 days link resets them to the default weekly range.
 
-```text
-Application
-Severity
-Status
-Exception Type
-Date Range
-Route
-```
-
-Search must support:
-
-```text
-Exception class
-Message
-File
-Route
-Issue ID
-```
+The issue list separately supports application, severity, status, exception type, date range, route, and text search (exception class, message, file, route, issue ID). Its date filter applies to issue last-seen time.
 
 ---
 
@@ -1731,168 +1634,45 @@ The admin must rotate the secret if it is lost.
 
 # 47. Notification
 
-MVP notification:
+The current notification channels are daily email, live in-app activity, and optional desktop browser notifications. WhatsApp delivery is removed.
 
-```text
-Email
-Qontak WhatsApp
-```
+Email is pulled by the Laravel scheduler once each morning at `SIVERA_DIGEST_TIME`, default 07:00 in `SIVERA_TIMEZONE=Asia/Jakarta`. It covers the previous local calendar day. There are no event-triggered emails. Admins manage recipient names, email addresses, and active state under Notifications. Mail transport credentials remain in server environment settings.
 
-Do not send a notification for every occurrence.
+# 48. Digest Delivery and Deduplication
 
-Default trigger:
+Run `php artisan sivera:send-digest` for yesterday, or `--date=YYYY-MM-DD` for a completed local day. The command sends synchronously, needs the scheduler but no mail queue worker, and uses a lock against concurrent runs. Each recipient/date pair has one delivery log, shared across duplicate recipient rules.
 
-```text
-New CRITICAL issue
-Issue becomes CRITICAL
-Issue REOPENED
-High-frequency issue
-```
+Successful pairs are skipped when rerun. Failed sends remain visible and may be retried with the same command. A failure for one recipient must not prevent other recipients from receiving their summaries. A zero-event day still sends a clear summary. SMTP acceptance and database updates cannot be atomic: a crash between them can duplicate delivery on retry.
 
----
+# 49. Daily Email Content
 
-# 48. Notification Cooldown
+The HTML and text summary includes:
+- Local summary date and timezone.
+- Total received events, active issues, and critical issues.
+- Top five applications by ERROR/CRITICAL events.
+- Top five errors with exception, stored message, period count, source location, route, and authenticated issue link.
+- A link to the dashboard for the same date.
+- A note that severity/status reflect current values.
 
-Default:
+`MAIL_FROM_ADDRESS` is the sender. Recipients must be configured separately. A log/array mailer does not deliver real email.
 
-```text
-30 minutes / issue / channel
-```
+# 50. Live In-App and Browser Alerts
 
-If an issue occurs 500 times during the cooldown:
+Admin and Viewer receive activity through authenticated polling on every workspace page. Use receipt IDs as cursors so an unchanged critical count cannot hide a new issue. Catch up in batches of 50; do not skip overflowing batches.
 
-```text
-1 alert
-```
+Retain up to 100 recent events and display up to 20 grouped issues in the bell. A new batch triggers one grouped toast. Read state is per user/browser in local storage. On the first visit, show recent activity without generating desktop notifications for historical events.
 
-not:
-
-```text
-500 alert
-```
-
-Notifications may be sent again when:
-
-- Severity increases.
-- The issue reopens.
-- The next frequency threshold is reached.
-- The cooldown ends and the rule condition is still met.
-
----
-
-# 49. Email Notification Example
-
-```text
-[SIVERA]
-
-New Production Error
-
-Application:
-SIBARIS
-
-Severity:
-CRITICAL
-
-Exception:
-Illuminate\Database\QueryException
-
-Location:
-app/Services/InvoiceService.php:187
-
-Route:
-POST /invoice-finance
-
-Occurrences:
-18
-
-Status:
-NEW
-
-Open Issue:
-https://monitor.example.internal/issues/{uuid}
-```
-
----
-
-# 50. Qontak Notification Example
-
-```text
-🚨 SIVERA Application Alert
-
-Application:
-SIBARIS
-
-Severity:
-CRITICAL
-
-Error:
-QueryException
-
-Location:
-InvoiceService.php:187
-
-Occurrence:
-27x
-
-Status:
-NEW
-```
-
-An issue link may be included if the Qontak template permits it.
-
----
+Request browser permission only after clicking Enable browser alerts. Use a trusted secure context and handle denied/unsupported states without disabling in-app alerts. Desktop notifications show only application and severity, rather than detailed error messages on the lock screen. Notifications require an open SIVERA page; closed-site Web Push is not included.
 
 # 51. Notification Data Model
 
-Table:
+`notification_rules` stores daily email recipients: id, name, trigger (`daily_digest`), channel (`email`), target, is_active, timestamps. Legacy trigger/threshold/cooldown/target-name fields are retained for compatibility and no longer control delivery.
 
-```text
-notification_rules
-```
+`notification_logs` stores id, nullable issue_id (historical per-issue records), notification_rule_id, channel, status, response_code (historical), sent_at, created_at, digest_date, digest_recipient. A unique constraint covers digest_date + normalized digest_recipient.
 
-Fields:
+The migration converts existing email rules into daily recipients, disables WhatsApp rules, and preserves historical logs. Old queued per-event jobs do not send. Rollback keeps issue_id nullable for historical digests and does not recreate exact original trigger/severity settings; restore a backup if those values are needed.
 
-```text
-id
-
-name
-channel
-
-severity
-frequency_threshold
-frequency_window_minutes
-
-cooldown_minutes
-
-is_active
-
-created_at
-updated_at
-```
-
-Table:
-
-```text
-notification_logs
-```
-
-Fields:
-
-```text
-id
-issue_id
-notification_rule_id
-
-channel
-
-status
-response_code
-
-sent_at
-created_at
-```
-
-Do not store provider credentials in logs.
+The live activity feed reuses `event_receipts` and issue/application relationships; it does not need email rules or a separate notifications table. Do not store provider credentials in logs.
 
 ---
 
@@ -2077,7 +1857,7 @@ The dashboard must use:
 
 Admin routes must enforce role authorization.
 
-Viewer routes must be read-only.
+Viewer monitoring routes must be read-only. The authenticated own-account password form is the only account-management write action available to Viewers.
 
 ---
 
@@ -2085,6 +1865,7 @@ Viewer routes must be read-only.
 
 | Feature | Admin | Viewer |
 |---|---:|---:|
+| Change own password | ✅ | ✅ |
 | Dashboard | ✅ | ✅ |
 | View Applications | ✅ | ✅ |
 | Create Application | ✅ | ❌ |
@@ -2561,7 +2342,9 @@ View stack trace
 View history
 ```
 
-Write requests from a Viewer must return:
+Viewers can also change their own password through **Account → Change password**, using the current password and a confirmed new password of at least 12 characters. This action must not permit changing another account, role, or active state. Limit attempts to five per minute and audit success without storing passwords.
+
+Monitoring and administration write requests from a Viewer must return:
 
 ```http
 403 Forbidden
@@ -2571,19 +2354,15 @@ Write requests from a Viewer must return:
 
 # 77. Acceptance Criteria — Notification
 
-If one critical issue occurs 50 times within 5 minutes:
-
-```text
-Issue Count:
-1
-
-Occurrence Count:
-50
-```
-
-Notifications follow the configured cooldown.
-
-Do not send 50 notifications.
+1. Fifty occurrences of one critical issue remain one issue and fifty receipt records.
+2. No per-event email or WhatsApp delivery occurs.
+3. One daily summary is sent per active email recipient for the previous local day, including zero-event days.
+4. Repeating a completed date skips successful deliveries; failed deliveries are logged and retryable.
+5. Disabled recipients and legacy WhatsApp jobs do not send.
+6. A burst exceeding 50 events is fetched through successive cursor batches without loss.
+7. Admin and Viewer receive live bell/toast updates without full-page reloads.
+8. Browser alerts require an explicit click and permission; denial leaves in-app activity working.
+9. Receipt-date filtering and local day boundaries apply consistently to email and dashboard analytics.
 
 ---
 
@@ -2695,11 +2474,11 @@ Viewer read-only access
 Build:
 
 ```text
-Email
-Qontak
-Notification rules
-Cooldown
-Notification logs
+Daily email digest
+Email recipients
+Live in-app notifications
+Optional desktop browser alerts
+Per-date delivery logs and deduplication
 ```
 
 ---
@@ -2743,9 +2522,11 @@ The MVP is considered complete when:
 - [ ] Stack traces are available.
 - [ ] The status workflow works correctly.
 - [ ] Resolved issues can reopen.
-- [ ] Email notifications work.
-- [ ] Qontak notifications work.
-- [ ] Notification cooldown works.
+- [ ] Daily email summaries work through the configured transport and scheduler.
+- [ ] Live in-app notifications work for Admins and Viewers.
+- [ ] Browser alerts work after permission on supported secure browsers.
+- [ ] Recipient/date deduplication and delivery failure handling work.
+- [ ] Dashboard date filters, application rankings, and top errors are verified.
 - [ ] Audit logs are available.
 - [ ] Retention cleanup runs successfully.
 - [ ] SIVERA failures do not cause target applications to fail.
@@ -2776,7 +2557,7 @@ Implementation rules:
 1. Do not add release/version tracking.
 2. The only roles are `admin` and `viewer`.
 3. Do not add a developer role.
-4. Do not allow Viewers to perform mutations.
+4. Do not allow Viewers to mutate monitoring or administration data. Permit authenticated changes to their own password only.
 5. Do not use the full request body by default.
 6. Do not store secrets in plaintext.
 7. Do not make SIVERA a hard dependency of target applications.
@@ -2793,7 +2574,7 @@ Implementation rules:
 18. All example secrets in the repository must be dummy values.
 19. `.env` must not be committed to the repository.
 20. API error responses must not expose internal implementation details.
-21. The MVP frontend must use Blade + Alpine.js + Fetch/AJAX polling.
+21. The frontend uses Blade management pages, React workspace/dashboard components, shadcn/ui with Radix, and authenticated Fetch polling.
 22. The default dashboard polling interval is 5 seconds and must be configurable between 5 and 10 seconds.
 23. Livewire may be used, but it is not a required dependency.
 24. Do not use WebSocket/Laravel Reverb in the MVP unless the requirement changes.
@@ -2827,7 +2608,7 @@ MILESTONE 1
 - Add automated tests.
 ```
 
-Do not implement Email/Qontak before secure ingestion and issue grouping are stable.
+Daily email and live activity notifications depend on secure ingestion and stable issue grouping; do not add WhatsApp delivery.
 
 ---
 

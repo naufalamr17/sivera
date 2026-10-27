@@ -18,11 +18,11 @@ class NotificationRuleFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => 'Critical alerts',
-            'trigger' => 'new_critical',
+            'name' => 'Morning summary',
+            'trigger' => 'daily_digest',
             'channel' => 'email',
             'target' => fake()->safeEmail(),
-            'severity' => 'CRITICAL',
+            'severity' => null,
             'frequency_threshold' => 10,
             'frequency_window_minutes' => 5,
             'cooldown_minutes' => 30,

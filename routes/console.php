@@ -9,3 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('sivera:cleanup')->dailyAt('00:30');
+Schedule::command('sivera:send-digest')->dailyAt(config('sivera.digest_time'))
+    ->timezone(config('sivera.timezone'))->withoutOverlapping();

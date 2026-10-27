@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['issue_id', 'notification_rule_id', 'channel', 'status', 'response_code', 'sent_at'])]
+#[Fillable(['issue_id', 'notification_rule_id', 'channel', 'status', 'response_code', 'sent_at', 'digest_date', 'digest_recipient'])]
 class NotificationLog extends Model
 {
     use HasFactory;

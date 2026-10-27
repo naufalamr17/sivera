@@ -1,139 +1,141 @@
 <?php
 
 use App\Jobs\SendNotificationJob;
+use App\Mail\DailyDigestMail;
 use App\Models\Application;
+use App\Models\EventReceipt;
 use App\Models\Issue;
 use App\Models\NotificationLog;
 use App\Models\NotificationRule;
 use App\Models\User;
 use App\Services\Sivera\EventIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
-it('groups 50 occurrences and creates one high frequency alert during cooldown', function () {
+it('ingests bursts without sending per event email and keeps live activity available', function () {
+    Mail::fake();
+    Bus::fake();
     $application = Application::factory()->create();
-    NotificationRule::factory()->create([
-        'trigger' => 'high_frequency',
-        'severity' => null,
-        'frequency_threshold' => 5,
-        'frequency_window_minutes' => 5,
-        'cooldown_minutes' => 30,
-    ]);
-    $ingestion = app(EventIngestionService::class);
-
+    NotificationRule::factory()->create();
     for ($index = 0; $index < 50; $index++) {
-        $ingestion->ingest($application, [
+        app(EventIngestionService::class)->ingest($application, [
             'event_id' => (string) Str::ulid(),
             'application' => $application->slug,
             'environment' => 'production',
-            'severity' => 'error',
+            'severity' => 'critical',
             'exception' => ['class' => 'RuntimeException', 'message' => 'Example error', 'file' => 'app/Service.php', 'line' => 10],
             'request' => ['method' => 'GET', 'route' => 'example', 'path' => '/example'],
             'occurred_at' => now()->toIso8601String(),
         ], '192.0.2.10');
     }
-
-    expect(Issue::count())->toBe(1)
-        ->and(Issue::first()->occurrence_count)->toBe(50)
-        ->and(NotificationLog::count())->toBe(1);
+    expect(Issue::count())->toBe(1)->and(Issue::first()->occurrence_count)->toBe(50)
+        ->and(EventReceipt::count())->toBe(50)->and(NotificationLog::count())->toBe(0);
+    Mail::assertNothingSent();
+    Bus::assertNothingDispatched();
+    $this->actingAs(User::factory()->create())->getJson(route('notifications.feed'))
+        ->assertOk()->assertJsonCount(20, 'events')->assertJsonPath('cursor', 50);
 });
 
-it('sends configured email and Qontak alerts without storing provider credentials', function () {
-    $issue = Issue::factory()->create(['severity' => 'CRITICAL']);
-    $emailRule = NotificationRule::factory()->create(['target' => 'alerts@example.test']);
-    $emailLog = NotificationLog::create([
-        'issue_id' => $issue->id,
-        'notification_rule_id' => $emailRule->id,
-        'channel' => 'email',
-        'status' => 'pending',
-    ]);
+it('sends one previous local day summary per active email recipient and prevents duplicate delivery', function () {
+    $this->travelTo(now()->setDate(2026, 10, 27)->setTime(1, 0));
+    config()->set('sivera.timezone', 'Asia/Jakarta');
     Mail::fake();
-    (new SendNotificationJob($emailLog->id))->handle();
-
+    NotificationRule::factory()->create(['target' => 'alerts@example.test']);
+    NotificationRule::factory()->create(['target' => 'ALERTS@example.test']);
+    NotificationRule::factory()->create(['is_active' => false]);
+    NotificationRule::factory()->create(['channel' => 'qontak', 'target' => '6281234567890']);
+    $issue = Issue::factory()->create(['severity' => 'CRITICAL', 'message' => 'Database unavailable']);
+    foreach (['2026-10-25 17:00:00', '2026-10-26 16:59:59', '2026-10-25 16:59:59', '2026-10-26 17:00:00'] as $time) {
+        $receipt = EventReceipt::factory()->for($issue)->create();
+        DB::table('event_receipts')->where('id', $receipt->id)->update(['created_at' => $time]);
+    }
+    $this->artisan('sivera:send-digest')->assertSuccessful();
+    $this->artisan('sivera:send-digest')->assertSuccessful();
     Mail::assertSentCount(1);
-    expect($emailLog->fresh()->status)->toBe('sent');
+    Mail::assertSent(DailyDigestMail::class, function (DailyDigestMail $mail): bool {
+        expect($mail->summary['from'])->toBe('2026-10-26')->and($mail->summary['events'])->toBe(2);
+        expect($mail->render())->toContain('Database unavailable', '2026-10-26', 'Inspect issue');
 
-    config()->set('services.qontak.token', 'dummy-token');
-    config()->set('services.qontak.channel_id', 'dummy-channel');
-    config()->set('services.qontak.template_id', 'dummy-template');
-    Http::fake(['service-chat.qontak.com/*' => Http::response(['status' => 'ok'], 200)]);
-    $qontakRule = NotificationRule::factory()->create([
-        'name' => 'WhatsApp critical',
-        'channel' => 'qontak',
-        'target' => '6281234567890',
-        'target_name' => 'Operations',
-    ]);
-    $qontakLog = NotificationLog::create([
-        'issue_id' => $issue->id,
-        'notification_rule_id' => $qontakRule->id,
-        'channel' => 'qontak',
-        'status' => 'pending',
-    ]);
-    (new SendNotificationJob($qontakLog->id))->handle();
-
-    Http::assertSent(function ($request): bool {
-        $payload = $request->data();
-
-        return $request->url() === 'https://service-chat.qontak.com/api/open/v1/broadcasts/whatsapp/direct'
-            && $payload['to_number'] === '6281234567890'
-            && $payload['parameters']['body'][1]['key'] === '2'
-            && ! str_contains($payload['parameters']['body'][1]['value_text'], "\n");
+        return $mail->hasTo('alerts@example.test');
     });
-    expect($qontakLog->fresh()->status)->toBe('sent')
-        ->and($qontakLog->fresh()->response_code)->toBe(200);
+    expect(NotificationLog::count())->toBe(1)->and(NotificationLog::first()->status)->toBe('sent')
+        ->and(NotificationLog::first()->issue_id)->toBeNull();
 });
 
-it('allows only admins to configure alert rules', function () {
-    $viewer = User::factory()->create();
-    $admin = User::factory()->admin()->create();
-    $payload = [
-        'name' => 'Critical email',
-        'trigger' => 'new_critical',
-        'channel' => 'email',
-        'target' => 'alerts@example.test',
-        'severity' => 'CRITICAL',
-        'frequency_threshold' => 10,
-        'frequency_window_minutes' => 5,
-        'cooldown_minutes' => 30,
-        'is_active' => '1',
-    ];
-
-    $this->actingAs($viewer)->post(route('notifications.store'), $payload)->assertForbidden();
-    $this->actingAs($admin)->post(route('notifications.store'), $payload)->assertRedirect(route('notifications.index'));
-
-    expect(NotificationRule::count())->toBe(1);
+it('sends a clear zero event summary and skips legacy queued notifications', function () {
+    Mail::fake();
+    $rule = NotificationRule::factory()->create();
+    $legacy = NotificationLog::factory()->create(['notification_rule_id' => $rule->id]);
+    SendNotificationJob::dispatchSync($legacy->id);
+    Mail::assertNothingSent();
+    $this->artisan('sivera:send-digest', ['--date' => now()->subDays(2)->toDateString()])->assertSuccessful();
+    Mail::assertSent(DailyDigestMail::class, fn ($mail) => $mail->summary['events'] === 0);
 });
 
-it('normalizes WhatsApp recipients in admin settings', function () {
-    $admin = User::factory()->admin()->create();
-
-    $this->actingAs($admin)->post(route('notifications.store'), [
-        'name' => 'Operations WhatsApp',
-        'trigger' => 'reopened',
-        'channel' => 'qontak',
-        'target' => '0812-3456-7890',
-        'target_name' => 'Operations',
-        'frequency_threshold' => 10,
-        'frequency_window_minutes' => 5,
-        'cooldown_minutes' => 30,
-        'is_active' => '1',
-    ])->assertRedirect(route('notifications.index'));
-
-    expect(NotificationRule::firstOrFail()->target)->toBe('6281234567890');
+it('records a failed delivery and retries it without resending successful recipients', function () {
+    NotificationRule::factory()->create(['target' => 'first@example.test']);
+    NotificationRule::factory()->create(['target' => 'second@example.test']);
+    Mail::shouldReceive('to')->once()->with('first@example.test')->andThrow(new RuntimeException('SMTP unavailable'));
+    Mail::shouldReceive('to')->once()->with('second@example.test')->andReturnSelf();
+    Mail::shouldReceive('send')->once();
+    Mail::shouldReceive('getDefaultDriver')->andReturn('array');
+    $date = now(config('sivera.timezone'))->subDays(2)->toDateString();
+    $this->artisan('sivera:send-digest', ['--date' => $date])->assertFailed();
+    expect(NotificationLog::query()->where('status', 'failed')->count())->toBe(1)
+        ->and(NotificationLog::query()->where('status', 'sent')->count())->toBe(1);
+    Mail::fake();
+    $this->artisan('sivera:send-digest', ['--date' => $date])->assertSuccessful();
+    Mail::assertSentCount(1);
+    Mail::assertSent(DailyDigestMail::class, fn ($mail) => $mail->hasTo('first@example.test'));
+    expect(NotificationLog::query()->where('status', 'sent')->count())->toBe(2);
 });
 
-it('alerts when an admin raises severity or reopens an issue', function () {
-    $admin = User::factory()->admin()->create();
+it('rejects invalid and unfinished digest days', function (string $date) {
+    $this->travelTo(now()->setDate(2026, 10, 27)->setTime(1, 0));
+    Mail::fake();
+    $this->artisan('sivera:send-digest', ['--date' => $date])->assertFailed();
+    Mail::assertNothingSent();
+})->with(['not-a-date', '2026-02-30', '2026-10-27', '2026-10-28']);
+
+it('allows only admins to manage email recipients and rejects whatsapp', function () {
+    $payload = ['name' => 'Morning operations', 'target' => 'alerts@example.test', 'is_active' => '1'];
+    $this->actingAs(User::factory()->create())->post(route('notifications.store'), $payload)->assertForbidden();
+    $this->actingAs(User::factory()->admin()->create())->post(route('notifications.store'), $payload)
+        ->assertRedirect(route('notifications.index'));
+    expect(NotificationRule::first()->trigger)->toBe('daily_digest')->and(NotificationRule::first()->channel)->toBe('email');
+    $this->post(route('notifications.store'), [...$payload, 'channel' => 'qontak'])->assertSessionHasErrors('channel');
+    $legacy = NotificationRule::factory()->create(['channel' => 'qontak']);
+    $this->get(route('notifications.edit', $legacy))->assertNotFound();
+    $this->put(route('notifications.update', $legacy), $payload)->assertNotFound();
+});
+
+it('keeps severity and status changes independent of email delivery', function () {
+    Mail::fake();
+    NotificationRule::factory()->create();
     $issue = Issue::factory()->create(['severity' => 'ERROR', 'status' => 'RESOLVED']);
-    NotificationRule::factory()->create(['name' => 'Escalation', 'trigger' => 'becomes_critical', 'severity' => 'CRITICAL']);
-    NotificationRule::factory()->create(['name' => 'Reopen', 'trigger' => 'reopened', 'severity' => null]);
-
-    $this->actingAs($admin)->post(route('issues.severity', $issue), ['severity' => 'CRITICAL'])->assertRedirect();
+    $this->actingAs(User::factory()->admin()->create())->post(route('issues.severity', $issue), ['severity' => 'CRITICAL'])->assertRedirect();
     $this->post(route('issues.status', $issue), ['status' => 'REOPENED'])->assertRedirect();
+    expect($issue->fresh()->status)->toBe('REOPENED')->and(NotificationLog::count())->toBe(0);
+    Mail::assertNothingSent();
+});
 
-    expect(NotificationLog::count())->toBe(2);
+it('pages live activity without losing events during a burst and protects the endpoint', function () {
+    $this->getJson(route('notifications.feed'))->assertUnauthorized();
+    $user = User::factory()->create();
+    $issue = Issue::factory()->create(['message' => '<script>alert(1)</script>']);
+    EventReceipt::factory()->for($issue)->count(55)->create();
+    $first = $this->actingAs($user)->getJson(route('notifications.feed', ['after' => 0]))->assertOk()
+        ->assertJsonCount(50, 'events')->assertJsonPath('has_more', true)->assertJsonPath('cursor', 50);
+    expect($first->json('events.0.received_at'))->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/');
+    $this->getJson(route('notifications.feed', ['after' => $first->json('cursor')]))->assertOk()
+        ->assertJsonCount(5, 'events')->assertJsonPath('cursor', 55)->assertJsonPath('has_more', false);
+    $this->getJson(route('notifications.feed', ['after' => 55]))->assertOk()->assertJsonCount(0, 'events')->assertJsonPath('cursor', 55);
+    $this->getJson(route('notifications.feed', ['after' => -1]))->assertUnprocessable();
+    $user->update(['is_active' => false]);
+    $this->getJson(route('notifications.feed'))->assertForbidden();
 });

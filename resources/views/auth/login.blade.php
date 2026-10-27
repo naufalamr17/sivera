@@ -4,12 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login · SIVERA</title>
-    <link rel="icon" type="image/svg+xml" href="{{ asset('sivera-icon.svg') }}">
+    <link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=2' }}">
+    @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="login-page">
 <main class="login-card">
-    <div class="login-brand"><img class="brand-mark" src="{{ asset('sivera-icon.svg') }}" alt="" width="38" height="38"><span><strong>SIVERA</strong><small>INCIDENT RESPONSE</small></span></div>
+    <div class="login-brand"><img class="brand-mark" src="{{ asset('sivera-icon.svg').'?v=2' }}" alt="" width="38" height="38"><span><strong>SIVERA</strong><small>APPLICATION MONITORING</small></span></div>
     <span class="eyebrow">SECURE ACCESS</span>
     <h1>Welcome back.</h1>
     <p>Sign in to monitor and resolve issues across internal applications.</p>

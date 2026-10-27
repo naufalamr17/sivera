@@ -1,47 +1,11 @@
-<laravel-boost-guidelines>
-# Laravel Application
+# SIVERA development guidance
 
-This repository contains a Laravel application. Complete the following setup before working on the user's request.
+Read and follow [AGENTS.md](AGENTS.md) before editing this project. Laravel Boost is already installed; do not reinstall PHP or dependencies as a bootstrap step.
 
-## Prerequisites
+Current stack: PHP 8.3, Laravel 13, MySQL/MariaDB, Blade management pages, React 19 workspace/dashboard, shadcn/ui components with Radix, Tailwind CSS 4, Vite 8. Confirm installed versions before using package APIs.
 
-Verify that PHP and Composer are available:
+Notification scope: daily email digest at 07:00 Asia/Jakarta by default; live in-app and optional browser alerts use authenticated polling. WhatsApp delivery is removed. Email configuration and recipients are separate. See [README.md](README.md) and [PRD_SIVERA.md](PRD_SIVERA.md).
 
-```sh
-php -v
-composer -V
-```
+Verify PHP changes with the relevant Pest tests and `php vendor/bin/pint --dirty --format agent`. For frontend changes run `npm run build` and `node --test tests/Frontend/notifications.test.mjs`. Windows CLI tests may require loading `pdo_sqlite` and `sqlite3` explicitly, as documented in README.
 
-If either command is unavailable, detect the user's operating system and install the prerequisites with the appropriate command:
-
-macOS:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/mac/8.5)"
-```
-
-Windows PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://php.new/install/windows/8.5'))
-```
-
-Linux:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/linux/8.5)"
-```
-
-After installation, ask the user to restart their terminal. If the agent needs the restarted shell to continue, ask the user to reopen their terminal and rerun their original prompt.
-
-## Agent Setup
-
-Install Laravel Boost from the application root before making application changes:
-
-```sh
-composer require laravel/boost --dev
-php artisan boost:install
-```
-
-Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
-</laravel-boost-guidelines>
+Keep changes focused. Do not expose credentials or send test emails to real recipients without an explicit request. A passing fake-mail test does not prove SMTP delivery or business acceptance.

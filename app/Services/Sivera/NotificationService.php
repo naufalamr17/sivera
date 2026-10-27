@@ -3,48 +3,32 @@
 namespace App\Services\Sivera;
 
 use App\Jobs\SendNotificationJob;
-use App\Models\Issue;
 use App\Models\NotificationLog;
 use App\Models\NotificationRule;
-use Illuminate\Support\Facades\DB;
 
 class NotificationService
 {
-    public function evaluate(Issue $issue, string $trigger): void
+    /** @return array{sent: int, failed: int} */
+    public function sendDigest(string $date): array
     {
-        $rules = NotificationRule::query()->where('is_active', true)->where('trigger', $trigger)
-            ->where(fn ($query) => $query->whereNull('severity')->orWhere('severity', $issue->severity))
-            ->get();
-
+        $result = ['sent' => 0, 'failed' => 0];
+        $rules = NotificationRule::query()->where('is_active', true)->where('channel', 'email')
+            ->where('trigger', 'daily_digest')->orderBy('id')->get()->unique(fn ($rule) => mb_strtolower($rule->target));
         foreach ($rules as $rule) {
-            if ($trigger === 'high_frequency') {
-                $count = $issue->receipts()
-                    ->where('created_at', '>=', now()->subMinutes($rule->frequency_window_minutes))
-                    ->count();
-
-                if ($count < $rule->frequency_threshold) {
-                    continue;
-                }
-            }
-
-            $recent = NotificationLog::query()
-                ->where('issue_id', $issue->id)
-                ->where('notification_rule_id', $rule->id)
-                ->where('created_at', '>=', now()->subMinutes($rule->cooldown_minutes))
-                ->exists();
-
-            if ($recent) {
+            $log = NotificationLog::query()->firstOrCreate([
+                'digest_date' => $date, 'digest_recipient' => mb_strtolower($rule->target),
+            ], ['notification_rule_id' => $rule->id, 'channel' => 'email', 'status' => 'pending']);
+            if ($log->status === 'sent') {
                 continue;
             }
-
-            $log = NotificationLog::create([
-                'issue_id' => $issue->id,
-                'notification_rule_id' => $rule->id,
-                'channel' => $rule->channel,
-                'status' => 'pending',
-            ]);
-
-            DB::afterCommit(fn () => SendNotificationJob::dispatchAfterResponse($log->id));
+            $log->update(['notification_rule_id' => $rule->id]);
+            SendNotificationJob::dispatchSync($log->id);
+            $status = $log->fresh()->status;
+            if (isset($result[$status])) {
+                $result[$status]++;
+            }
         }
+
+        return $result;
     }
 }

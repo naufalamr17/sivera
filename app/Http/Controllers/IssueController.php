@@ -9,7 +9,6 @@ use App\Models\AuditLog;
 use App\Models\Issue;
 use App\Models\IssueComment;
 use App\Models\IssueStatusHistory;
-use App\Services\Sivera\NotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -53,7 +52,7 @@ class IssueController extends Controller
         ]);
     }
 
-    public function status(UpdateIssueRequest $request, Issue $issue, NotificationService $notifications): RedirectResponse
+    public function status(UpdateIssueRequest $request, Issue $issue): RedirectResponse
     {
         $status = $request->validated('status');
         $previous = $issue->status;
@@ -71,23 +70,15 @@ class IssueController extends Controller
             ]);
             $this->audit($request, 'issue.status_changed', $issue);
 
-            if ($status === 'REOPENED') {
-                $notifications->evaluate($issue, 'reopened');
-            }
         }
 
         return back()->with('status', 'Issue status updated.');
     }
 
-    public function severity(UpdateIssueRequest $request, Issue $issue, NotificationService $notifications): RedirectResponse
+    public function severity(UpdateIssueRequest $request, Issue $issue): RedirectResponse
     {
-        $previous = $issue->severity;
         $issue->update(['severity' => $request->validated('severity')]);
         $this->audit($request, 'issue.severity_changed', $issue);
-
-        if ($previous !== 'CRITICAL' && $issue->severity === 'CRITICAL') {
-            $notifications->evaluate($issue, 'becomes_critical');
-        }
 
         return back()->with('status', 'Severity updated.');
     }

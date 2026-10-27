@@ -7,6 +7,7 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\IssueController;
+use App\Http\Controllers\NotificationFeedController;
 use App\Http\Controllers\NotificationSettingController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\EnsureActiveUser;
@@ -22,7 +23,10 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', EnsureActiveUser::class])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('/account/password', [AuthController::class, 'editPassword'])->name('password.edit');
+    Route::put('/account/password', [AuthController::class, 'updatePassword'])->middleware('throttle:5,1')->name('password.update');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/notifications/feed', NotificationFeedController::class)->name('notifications.feed');
     Route::get('/dashboard/live-summary', [DashboardController::class, 'liveSummary'])->name('dashboard.live-summary');
     Route::get('/applications', [ApplicationController::class, 'index'])->name('applications.index');
     Route::get('/applications/create', [ApplicationController::class, 'create'])->middleware('can:admin')->name('applications.create');

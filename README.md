@@ -1,8 +1,8 @@
-# SIVERA (On Progress)
+# SIVERA
 
 **Smart Integrated Visibility & Event Response Application** is an internal Laravel application for collecting exceptions from other Laravel applications, grouping repeated errors into issues, and managing incident response in one place.
 
-The dashboard shows recent activity and issue counts. Operators can inspect occurrences and stack traces, update issue status and severity, and send rule-based email or Qontak alerts. The bundled reporter package sends exceptions without changing the source application's existing Laravel logging.
+The dashboard shows date-filtered activity, application error rankings, and the most frequent exceptions with their reported messages. Operators can inspect stack traces, update issue status and severity, receive live in-app/browser alerts, and receive one email summary each morning. The bundled reporter package sends exceptions without changing the source application's existing Laravel logging.
 
 This repository implements the MVP described in [PRD_SIVERA.md](PRD_SIVERA.md). It does not provide application performance monitoring, distributed tracing, release tracking, or browser session replay.
 
@@ -13,7 +13,9 @@ This repository implements the MVP described in [PRD_SIVERA.md](PRD_SIVERA.md). 
 - Node.js and npm for the Vite frontend build
 - MySQL or MariaDB for the default configuration
 
-The application uses Laravel 13, Blade, Tailwind CSS 4, and Vite 8. Database-backed cache, sessions, and queues are configured in `.env.example`.
+The application uses Laravel 13, Blade, React 19, shadcn/ui components with Radix primitives, Tailwind CSS 4, and Vite 8. React renders workspace navigation, the notification center, and the dashboard; management pages remain server-rendered Blade. Database-backed cache, sessions, and queues are configured in `.env.example`.
+
+The shared SVG logo at `public/sivera-icon.svg` combines a browser window with an ascending bar chart to represent web application monitoring and analytics. The login page, workspace navigation, favicon, and browser notification icon reuse this asset.
 
 ## Local setup
 
@@ -46,28 +48,33 @@ Open `http://localhost:8000/login`. For frontend development, run `npm run dev` 
 
 Do not use the sample accounts in a deployed environment. `UserSeeder` skips environments other than `local` and `testing`; create the first deployed administrator with `php artisan sivera:create-admin`. That command prompts for a name, a unique email address, and a password of at least 12 characters.
 
-Optional sample applications and issues can be added outside production with `php artisan db:seed --class=SiveraDemoSeeder`. `NotificationRulesSeeder` creates a sample rule addressed to `alerts@example.test`; configure a real target before using notifications.
+Optional sample applications and issues can be added outside production with `php artisan db:seed --class=SiveraDemoSeeder`. `NotificationRulesSeeder` creates a sample email recipient addressed to `alerts@example.test`; configure a real target before using notifications.
 
 ### Background processes
 
-Start a queue worker to deliver email and Qontak notifications:
+Run the Laravel scheduler for the morning email summary and daily retention cleanup:
 
 ```powershell
-php artisan queue:work
+php artisan schedule:work
 ```
 
-Run the Laravel scheduler so retention cleanup executes daily at 00:30 in the application's timezone (UTC by default). For local development, `php artisan schedule:work` is sufficient. In deployment, invoke `php artisan schedule:run` every minute through cron or Windows Task Scheduler. Cleanup can also be run manually with `php artisan sivera:cleanup`.
+The digest runs at **07:00 Asia/Jakarta** by default and covers the previous local calendar day. Configure `SIVERA_DIGEST_TIME` and `SIVERA_TIMEZONE` to change this. Cleanup runs at 00:30 in the application's timezone (UTC by default). In deployment, invoke `php artisan schedule:run` every minute using cron or Windows Task Scheduler. Keep the machine/server running when scheduled work is due.
+
+The daily email command sends synchronously and records delivery status; it does not need a queue worker. A source application using `SIVERA_TRANSPORT=queue` still needs its own `php artisan queue:work`.
 
 ## Access and workflow
 
 | Area | Admin | Viewer |
 | --- | --- | --- |
 | Dashboard, applications, issues, stack traces, and history | View | View |
+| Own account password | Change | Change |
 | Applications and API credentials | Manage | View applications |
 | Issue status, severity, and comments | Manage | View |
-| Users, notification rules, audit logs, and API logs | Manage/view | No access |
+| Users, email recipients, audit logs, and API logs | Manage/view | No access |
 
 Inactive users cannot access authenticated pages. The dashboard refreshes its summary every 5 seconds by default; `SIVERA_POLL_SECONDS` is limited to 5–10 seconds.
+
+Open **Account → Change password** in the sidebar or mobile navigation to update your own password. Supply the current password, a different new password of at least 12 characters, and its confirmation. Changes are hashed, audited without storing password values, and limited to five attempts per minute. The current session ID is regenerated after success; no email is sent for this action.
 
 To connect an application:
 
@@ -153,7 +160,7 @@ Run `php artisan sivera:test` in the source application to send a synthetic exce
 
 7. Open **Issues** in SIVERA and verify the synthetic `SIVERA connection test` issue, application, occurrence, and stack trace. Laravel exceptions are then reported automatically; controller and business-logic changes are not required. Existing Laravel logging continues to operate.
 
-Email and WhatsApp activation are deferred. Leave notification rules inactive while testing error ingestion; notification setup is independent of reporter installation.
+Email summary recipients are managed in SIVERA under **Notifications**. Reporter installation does not configure recipients. WhatsApp delivery has been removed.
 
 If the test fails, check the HTTPS URL and certificate, outbound network access, application slug, registered environment, client ID, secret, and server clock. A `401` indicates an authentication or security check failed; `422` indicates an invalid payload; `429` indicates the configured rate limit. The package manifest allows Laravel 10–13, but installation and delivery must still be checked in each target application.
 
@@ -196,9 +203,49 @@ Use the credential secret as the HMAC key. Timestamps must be within five minute
 
 ## Notifications and retention
 
-Admins create email or Qontak rules under **Notifications**. Available triggers are `new_critical`, `becomes_critical`, `reopened`, and `high_frequency`. Rules support severity filtering, a frequency window and threshold, and a per-issue cooldown. Notification attempts are recorded and delivered by the queue worker.
+Admins add email recipients under **Notifications**. Each active recipient receives one summary per date at the morning schedule. The summary includes event counts, active/critical issues, top five applications by ERROR/CRITICAL event count, and top five grouped errors with their messages, source locations, and issue links. Days with zero events produce an explicit zero-event summary. There are no per-event emails or frequency/cooldown rules.
 
-Email uses Laravel's `MAIL_*` settings. `.env.example` defaults to `MAIL_MAILER=log`, so configure a real mail transport to send messages. Qontak uses `QONTAK_BASE_URL`, `QONTAK_TOKEN`, `QONTAK_CHANNEL_ID`, `QONTAK_TEMPLATE_ID`, and `QONTAK_LANG`. The default `QONTAK_LANG=id` is the provider template language code; set it to match the approved template independently of the English dashboard language.
+Email uses Laravel's `MAIL_*` settings. Configure `MAIL_MAILER=smtp` (or another real transport), the SMTP credentials, and a valid sender. The `log` and `array` transports do not deliver external email. Add recipients separately; `MAIL_FROM_ADDRESS` is the sender, not a recipient.
+
+### Test email from the terminal
+
+From the **SIVERA server repository**, run:
+
+```powershell
+php artisan config:clear
+php artisan sivera:test-email
+```
+
+The command asks **Recipient email address**. Enter one valid email address; it sends one plain test message immediately through the configured `MAIL_*` transport. No queue worker or scheduler is needed. The address is not saved as a daily summary recipient, and the test contains no issue data.
+
+Interactive entry is required: there is no recipient argument or default recipient, and `--no-interaction` fails without sending. Invalid addresses and direct `log`/`array` transports are rejected. Delivery failures return a nonzero exit code without printing provider credentials. A success message means the configured mailer accepted the message; verify the inbox and spam folder to confirm arrival. Use `MAIL_MAILER=smtp` when checking SMTP directly, since a configured failover mailer may fall back to a logging transport.
+
+### Daily email schedule
+
+```dotenv
+SIVERA_TIMEZONE=Asia/Jakarta
+SIVERA_DIGEST_TIME=07:00
+```
+
+After changing environment values, run `php artisan config:clear` and restart `schedule:work` if already running. Run a digest for a completed date with:
+
+```powershell
+php artisan sivera:send-digest --date=2026-10-26
+```
+
+Omit `--date` for yesterday in `SIVERA_TIMEZONE`. Successful recipient/date pairs are skipped on repeat runs; failed attempts are recorded and can be retried using the same command. An application lock prevents overlapping runs. SMTP acceptance and the database log are separate operations: a process crash after SMTP acceptance can still cause a retry to duplicate delivery. Use the delivery history to investigate failures. Logs follow the retention policy, so avoid rerunning dates older than retained delivery history.
+
+The migration converts existing email rules into daily recipients, deactivates WhatsApp rules, and preserves historical logs. Legacy rule fields remain for historical compatibility and no longer control delivery. Old queued per-event jobs are ignored. Rolling back does not restore the original rule trigger/severity settings; restore a database backup to recover those exact settings.
+
+The bell appears on all authenticated pages for Admins and Viewers. It polls `GET /notifications/feed` every 5–10 seconds independently of dashboard date filters, follows an event ID cursor, and catches up in batches of 50. The list groups repeated activity by issue, retains up to 100 events, and displays up to 20 issues. Read state is stored per user in that browser, rather than synchronized between devices. First visit loads recent activity without desktop alerts for old events. A burst produces a grouped in-app toast.
+
+Click **Enable browser alerts** in the bell to request permission. Desktop notifications require a supported browser and a secure context (trusted HTTPS or localhost). They work while SIVERA is open; Web Push after closing the site is outside this implementation. Notifications show only application and severity on the lock screen. If permission is denied or unsupported, in-app alerts continue. See [MDN's Notifications API guide](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
+
+## Dashboard date filters and rankings
+
+The dashboard defaults to the last seven calendar days, including today, in `SIVERA_TIMEZONE`. Apply an inclusive **From / To** range (maximum 366 days). A single day uses hourly chart buckets; longer ranges use daily buckets. Polling preserves the selected dates and updates cards, chart, rankings, and recent issues. The **Last 7 days** link resets the filter; a page left open overnight retains its original selected range until reset or reload.
+
+Counts use **event receipt timestamps**, converted from local midnight boundaries to UTC. They do not use lifetime issue counters or sampled stack-trace details. The Applications card counts all registered applications. Open, critical, and resolved counts include only issues with events received in the selected period and reflect their **current** status/severity. Rankings include ERROR and CRITICAL only. Top errors show reported exception/message and location, which are evidence for investigation rather than an automatic root-cause diagnosis.
 
 Retention settings are defined in `.env.example` and [`config/sivera.php`](config/sivera.php):
 
@@ -214,13 +261,13 @@ Cleanup removes old issues only when their status is `RESOLVED` or `IGNORED`; op
 
 ```text
 app/
-  Console/Commands/       # Admin creation and retention cleanup
+  Console/Commands/       # Admin creation, daily digest, retention cleanup
   Http/Controllers/       # Dashboard, issue, application, user, and log pages
   Http/Middleware/        # HTTPS, active-user, and API signature checks
   Http/Requests/          # Input validation
-  Jobs/                   # Queued notification delivery
+  Jobs/                   # Daily digest delivery (called synchronously)
   Models/                 # Users, applications, issues, logs, and rules
-  Services/Sivera/        # Event ingestion and notification logic
+  Services/Sivera/        # Event ingestion, date analytics, daily digest logic
 config/                   # Application and SIVERA settings
 database/
   factories/              # Test data builders
@@ -228,9 +275,11 @@ database/
   seeders/                # Local users and optional demo data
 packages/sivera-reporter/ # Composer package installed in source applications
 public/                   # Frontend assets and SIVERA icon
-resources/views/          # Blade UI and email template
-routes/                    # Web, event API, and scheduled cleanup routes
-tests/                    # Pest unit and feature tests
+resources/views/          # Blade management pages and email templates
+resources/js/             # React workspace/dashboard and shadcn/ui components
+resources/css/            # Shared neutral theme and management page styles
+routes/                    # Web, event API, and scheduled digest/cleanup routes
+tests/                    # Pest tests and Node notification state tests
 PRD_SIVERA.md              # Product requirements
 ```
 
@@ -240,6 +289,8 @@ PRD_SIVERA.md              # Product requirements
 php artisan route:list --except-vendor
 php artisan schedule:list
 php artisan test --compact
+node --test tests/Frontend/notifications.test.mjs
+npm run build
 ```
 
 The tests use SQLite in memory. If the PHP CLI does not load SQLite extensions, enable `pdo_sqlite` and `sqlite3` before testing. On a Windows PHP installation where those extension files exist, the suite can be run with:

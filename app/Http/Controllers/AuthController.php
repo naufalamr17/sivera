@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
+use App\Http\Requests\UpdatePasswordRequest;
 use App\Models\AuditLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -55,5 +57,29 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    public function editPassword(): View
+    {
+        return view('auth.change-password');
+    }
+
+    public function updatePassword(UpdatePasswordRequest $request): RedirectResponse
+    {
+        $user = $request->user();
+
+        DB::transaction(function () use ($request, $user): void {
+            $user->update(['password' => $request->validated('password')]);
+            AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'user.password_changed',
+                'subject_type' => $user::class,
+                'subject_id' => $user->id,
+                'ip_address' => $request->ip(),
+            ]);
+        });
+        $request->session()->regenerate();
+
+        return redirect()->route('password.edit')->with('status', 'Your password has been changed.');
     }
 }

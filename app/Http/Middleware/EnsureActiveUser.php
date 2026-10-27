@@ -18,6 +18,10 @@ class EnsureActiveUser
         if (! $request->user()?->is_active) {
             auth()->logout();
 
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Account is inactive.'], 403);
+            }
+
             return redirect()->route('login');
         }
 

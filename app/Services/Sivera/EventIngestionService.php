@@ -12,8 +12,6 @@ use Illuminate\Support\Str;
 
 class EventIngestionService
 {
-    public function __construct(private NotificationService $notifications) {}
-
     /**
      * @param  array<string, mixed>  $event
      */
@@ -31,8 +29,6 @@ class EventIngestionService
             $file = $this->relativePath($exception['file'] ?? null);
             $route = $this->clean($request['route'] ?? null);
             $now = now();
-            $wasReopened = false;
-            $isNew = false;
             $fingerprint = hash('sha256', implode("\n", [
                 $application->id,
                 $exception['class'],
@@ -58,12 +54,10 @@ class EventIngestionService
                     ]);
                     $issue->status = 'REOPENED';
                     $issue->reopened_at = $now;
-                    $wasReopened = true;
                 }
 
                 $issue->save();
             } else {
-                $isNew = true;
                 $issue = Issue::create([
                     'uuid' => (string) Str::uuid(),
                     'application_id' => $application->id,
@@ -110,16 +104,6 @@ class EventIngestionService
                     'occurred_at' => $event['occurred_at'],
                 ]);
             }
-
-            if ($isNew && $issue->severity === 'CRITICAL') {
-                $this->notifications->evaluate($issue, 'new_critical');
-            }
-
-            if ($wasReopened) {
-                $this->notifications->evaluate($issue, 'reopened');
-            }
-
-            $this->notifications->evaluate($issue, 'high_frequency');
 
             return false;
         });

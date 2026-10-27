@@ -15,7 +15,7 @@ class NotificationSettingController extends Controller
     public function index(): View
     {
         return view('notifications.index', [
-            'rules' => NotificationRule::query()->orderBy('name')->get(),
+            'rules' => NotificationRule::query()->where('channel', 'email')->where('trigger', 'daily_digest')->orderBy('name')->get(),
             'logs' => NotificationLog::query()->with('issue', 'rule')->latest('id')->limit(20)->get(),
         ]);
     }
@@ -27,23 +27,26 @@ class NotificationSettingController extends Controller
 
     public function store(StoreNotificationRuleRequest $request): RedirectResponse
     {
-        $rule = NotificationRule::create($request->validated());
+        $rule = NotificationRule::create([...$request->validated(), 'trigger' => 'daily_digest', 'channel' => 'email']);
         $this->audit($request, 'notification_rule.created', $rule);
 
-        return redirect()->route('notifications.index')->with('status', 'Notification rule created.');
+        return redirect()->route('notifications.index')->with('status', 'Email recipient added.');
     }
 
     public function edit(NotificationRule $rule): View
     {
+        abort_unless($rule->channel === 'email' && $rule->trigger === 'daily_digest', 404);
+
         return view('notifications.form', compact('rule'));
     }
 
     public function update(StoreNotificationRuleRequest $request, NotificationRule $rule): RedirectResponse
     {
-        $rule->update($request->validated());
+        abort_unless($rule->channel === 'email' && $rule->trigger === 'daily_digest', 404);
+        $rule->update([...$request->validated(), 'trigger' => 'daily_digest', 'channel' => 'email']);
         $this->audit($request, 'notification_rule.updated', $rule);
 
-        return redirect()->route('notifications.index')->with('status', 'Notification rule updated.');
+        return redirect()->route('notifications.index')->with('status', 'Email recipient updated.');
     }
 
     private function audit(Request $request, string $action, NotificationRule $rule): void

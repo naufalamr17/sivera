@@ -2,15 +2,16 @@
 @section('title', 'Notifications')
 @section('heading', 'Notifications')
 @section('content')
-<div class="page-head"><div><h2>Alert rules</h2><p>Send important alerts by email or Qontak WhatsApp, with a cooldown per issue.</p></div><a class="button primary" href="{{ route('notifications.create') }}">+ Add rule</a></div>
-<section class="panel"><div class="table-scroll"><table><thead><tr><th>RULE</th><th>TRIGGER</th><th>CHANNEL</th><th>TARGET</th><th>COOLDOWN</th><th>STATUS</th><th></th></tr></thead><tbody>
-@forelse($rules as $rule)
-<tr><td><strong>{{ $rule->name }}</strong><small>{{ $rule->severity ?: 'All severities' }}</small></td><td>{{ str_replace('_', ' ', strtoupper($rule->trigger)) }}</td><td>{{ strtoupper($rule->channel) }}</td><td>{{ $rule->target }}</td><td>{{ $rule->cooldown_minutes }} minutes</td><td><span @class(['badge', 'enabled' => $rule->is_active])>{{ $rule->is_active ? 'ACTIVE' : 'DISABLED' }}</span></td><td><a class="text-link" href="{{ route('notifications.edit', $rule) }}">Edit →</a></td></tr>
-@empty <tr><td colspan="7" class="empty">No alert rules yet.</td></tr> @endforelse
+<div class="page-head"><div><h1>Notifications</h1><p>Live alerts in your workspace. One email summary each morning.</p></div><a class="button primary" href="{{ route('notifications.create') }}">Add recipient</a></div>
+<div class="notice">Daily email: <strong>{{ config('sivera.digest_time') }} · {{ config('sivera.timezone') }}</strong>. Covers the previous calendar day, including days with no events.</div>
+<section class="panel"><div class="panel-head"><h2>Email recipients</h2></div><div class="table-scroll"><table><thead><tr><th>Recipient</th><th>Email address</th><th>Status</th><th></th></tr></thead><tbody>
+@forelse ($rules as $rule)
+<tr><td class="table-title">{{ $rule->name }}</td><td>{{ $rule->target }}</td><td><span class="badge">{{ $rule->is_active ? 'Active' : 'Disabled' }}</span></td><td><a class="text-link" href="{{ route('notifications.edit', $rule) }}">Edit</a></td></tr>
+@empty <tr><td colspan="4" class="empty">Add an email recipient to receive morning summaries.</td></tr> @endforelse
 </tbody></table></div></section>
-<section class="panel"><div class="panel-head"><div><span class="eyebrow">DELIVERY</span><h2>Recent notifications</h2></div></div><div class="table-scroll"><table><thead><tr><th>TIME</th><th>ISSUE</th><th>RULE</th><th>CHANNEL</th><th>STATUS</th></tr></thead><tbody>
-@forelse($logs as $log)
-<tr><td>{{ $log->created_at }}</td><td><a class="text-link" href="{{ route('issues.show', $log->issue) }}">{{ $log->issue->exception_class }}</a></td><td>{{ $log->rule->name }}</td><td>{{ strtoupper($log->channel) }}</td><td><span @class(['badge', 'enabled' => $log->status === 'sent'])>{{ strtoupper($log->status) }}</span></td></tr>
-@empty <tr><td colspan="5" class="empty">No alerts have been sent yet.</td></tr> @endforelse
+<section class="panel"><div class="panel-head"><h2>Delivery history</h2><span class="panel-meta">Latest 20 deliveries</span></div><div class="table-scroll"><table><thead><tr><th>Created</th><th>Summary date / issue</th><th>Recipient</th><th>Status</th></tr></thead><tbody>
+@forelse ($logs as $log)
+<tr><td>{{ $log->created_at }}</td><td>@if($log->digest_date){{ $log->digest_date }}@elseif($log->issue)<a class="text-link" href="{{ route('issues.show', $log->issue) }}">{{ $log->issue->exception_class }}</a>@else Historical alert @endif</td><td>{{ $log->digest_recipient ?? $log->rule?->name }}</td><td><span class="badge">{{ ucfirst($log->status) }}</span></td></tr>
+@empty <tr><td colspan="4" class="empty">No deliveries yet.</td></tr> @endforelse
 </tbody></table></div></section>
 @endsection

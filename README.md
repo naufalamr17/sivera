@@ -81,7 +81,18 @@ The Issues page supports application, severity, status, exception class, route, 
 
 ## Install the reporter in another Laravel application
 
-The reporter lives at [`packages/sivera-reporter`](packages/sivera-reporter). It is a separate Composer package; it is not installed as a dependency of the SIVERA server. Add it to the **source application's** `composer.json` using a path repository, with a path relative to that application's root:
+The reporter lives at [`packages/sivera-reporter`](packages/sivera-reporter). It is a separate MIT-licensed Composer package; it is not installed as a dependency of the SIVERA server. Install the public package from [Packagist](https://packagist.org/packages/naufalamr17/sivera-reporter) from the **source application's** root without copying package folders:
+
+```powershell
+composer require "naufalamr17/sivera-reporter:^0.1"
+php artisan sivera:install
+```
+
+The package's [README](packages/sivera-reporter/README.md) covers configuration and delivery checks. If the source application already uses the local path repository, remove it with `composer config --unset repositories.sivera-reporter` before requiring the public release. Existing configuration can stay in place; do not rerun `sivera:install` just to switch sources.
+
+If the earlier local package `naufal/sivera-reporter` is already installed, remove it with `composer remove naufal/sivera-reporter` before installing the public package. Packagist's `naufal` vendor is owned by someone else; the public package uses `naufalamr17/sivera-reporter`.
+
+For local package development, add a path repository to the source application's `composer.json`, with a path relative to that application's root:
 
 ```json
 {
@@ -97,7 +108,7 @@ The reporter lives at [`packages/sivera-reporter`](packages/sivera-reporter). It
 Then, from the source application, run:
 
 ```powershell
-composer require "mlp/sivera-reporter:@dev"
+composer require "naufalamr17/sivera-reporter:@dev"
 php artisan sivera:install
 ```
 
@@ -116,6 +127,35 @@ SIVERA_TRANSPORT=http
 `SIVERA_APP_ID` and `SIVERA_ENVIRONMENT` must match the application registered in SIVERA. `SIVERA_URL` is the server base URL, without `/api/v1/events`, and **must use HTTPS**; the reporter refuses plain HTTP even during local testing. Its default transport sends with a 0.5-second connection timeout and a 2-second total timeout. Set `SIVERA_TRANSPORT=queue` to dispatch through the source application's queue worker. The reporter catches delivery failures so they do not change the source application's exception handling; it does not capture request bodies by default.
 
 Run `php artisan sivera:test` in the source application to send a synthetic exception. The `sivera:install` and `sivera:test` commands belong to the installed reporter package, not the SIVERA server.
+
+### First application setup
+
+1. Publish SIVERA at an HTTPS URL reachable from the source application's server. Verify that `GET /health` returns `{"status":"ok"}`. Apply pending SIVERA migrations with `php artisan migrate` before connecting applications.
+2. In SIVERA, sign in as an Admin, open **Applications**, and create an application. For example, use name `My Application`, slug `my-application`, environment `production`, and rate limit `60`. Leave the IP allowlist empty unless you know the source server's outbound IP address.
+3. Open the application and generate a credential. Save the client ID and secret securely; the secret is shown only once. Use separate registrations and credentials for separate applications or environments.
+4. Install the reporter from the **source application's root directory**, not the SIVERA directory. Use the Packagist commands above. For local package development, either use a shared path repository or copy `packages/sivera-reporter` into the source application's own `packages/sivera-reporter` folder and run:
+
+   ```powershell
+   composer config repositories.sivera-reporter path ./packages/sivera-reporter
+   composer require "naufalamr17/sivera-reporter:@dev"
+   php artisan sivera:install
+   ```
+
+5. Set the source application's `.env` using the example above. Set `SIVERA_APP_ID=my-application`, match `SIVERA_ENVIRONMENT` to the registered environment, and use the generated client ID and secret. Keep `SIVERA_TRANSPORT=http` if the source application has no queue worker. Do not commit the `.env` file.
+6. Reload configuration and send a test event from the source application:
+
+   ```powershell
+   php artisan config:clear
+   php artisan sivera:test
+   ```
+
+   If the deployed application uses cached configuration, run `php artisan config:cache` after updating its environment. Restart existing long-running queue workers with `php artisan queue:restart` when they need to load the new package or configuration.
+
+7. Open **Issues** in SIVERA and verify the synthetic `SIVERA connection test` issue, application, occurrence, and stack trace. Laravel exceptions are then reported automatically; controller and business-logic changes are not required. Existing Laravel logging continues to operate.
+
+Email and WhatsApp activation are deferred. Leave notification rules inactive while testing error ingestion; notification setup is independent of reporter installation.
+
+If the test fails, check the HTTPS URL and certificate, outbound network access, application slug, registered environment, client ID, secret, and server clock. A `401` indicates an authentication or security check failed; `422` indicates an invalid payload; `429` indicates the configured rate limit. The package manifest allows Laravel 10–13, but installation and delivery must still be checked in each target application.
 
 ## Event API
 

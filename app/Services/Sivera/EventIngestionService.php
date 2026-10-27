@@ -153,8 +153,11 @@ class EventIngestionService
             return null;
         }
 
-        $value = preg_replace('/\bBearer\s+\S+/i', '[REDACTED]', $value);
+        $pattern = <<<'REGEX'
+~(["']?[\w-]*(?:password|passwd|secret|token|authorization|cookie|session|bearer|api[_-]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;\r\n}&]+)~i
+REGEX;
+        $value = preg_replace($pattern, '$1"[REDACTED]"', $value);
 
-        return preg_replace('/\b(password|passwd|secret|token|authorization|cookie|api[_-]?key)\b\s*[:=]\s*[^\s,;]+/i', '$1=[REDACTED]', $value);
+        return preg_replace('/\bBearer\s+[^\s"\'<> ,;}\]]+/i', '[REDACTED]', $value);
     }
 }

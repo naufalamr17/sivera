@@ -189,7 +189,7 @@ Viewers cannot:
 │ Application D                 │
 └──────────────┬────────────────┘
                │
-               │ mlp/sivera-reporter
+               │ naufalamr17/sivera-reporter
                │
                │ HTTPS
                │ HMAC-SHA256
@@ -294,7 +294,7 @@ Integration must require as few changes to source applications as possible.
 Target integration:
 
 ```bash
-composer require mlp/sivera-reporter
+composer require naufalamr17/sivera-reporter
 php artisan sivera:install
 ```
 
@@ -507,7 +507,7 @@ Redis may be used if already available, but is not mandatory.
 Internal package name:
 
 ```text
-mlp/sivera-reporter
+naufalamr17/sivera-reporter
 ```
 
 The package is responsible for:
@@ -528,7 +528,7 @@ The package is responsible for:
 Intended usage:
 
 ```bash
-composer require mlp/sivera-reporter
+composer require naufalamr17/sivera-reporter
 ```
 
 Then:
@@ -2404,7 +2404,7 @@ Controllers must remain thin.
 # 70. Reporter Package Suggested Structure
 
 ```text
-mlp/sivera-reporter
+naufalamr17/sivera-reporter
 │
 ├── src/
 │   ├── SiveraServiceProvider.php
@@ -2660,7 +2660,7 @@ Status history
 Build:
 
 ```text
-mlp/sivera-reporter
+naufalamr17/sivera-reporter
 
 Laravel exception hook
 Event builder

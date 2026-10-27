@@ -136,3 +136,28 @@ it('rejects oversized payloads before processing', function () {
 
     expect(Issue::count())->toBe(0);
 });
+
+it('redacts sensitive event messages before storing them', function (string $message, string $expected) {
+    $payload = eventPayload($this->application);
+    $payload['exception']['message'] = $message;
+    $payload['request']['path'] = '/example?'.$message;
+
+    sendEvent($this, $this->application, $this->credential, $payload)->assertStatus(202);
+
+    expect(Issue::firstOrFail()->message)->toBe($expected)
+        ->and(IssueOccurrence::firstOrFail()->request_metadata_json['path'])->toBe('/example?'.$expected);
+})->with('sensitive event messages');
+
+it('preserves long normalized file paths and groups their events', function () {
+    $relativePath = 'app/'.str_repeat('LongDirectory/', 30).'Service.php';
+    $payload = eventPayload($this->application);
+    $payload['exception']['file'] = '/home/server/'.$relativePath;
+
+    sendEvent($this, $this->application, $this->credential, $payload)->assertStatus(202);
+    $payload['event_id'] = (string) Str::ulid();
+    sendEvent($this, $this->application, $this->credential, $payload)->assertStatus(202);
+
+    expect(Issue::count())->toBe(1)
+        ->and(Issue::firstOrFail()->file)->toBe($relativePath)
+        ->and(Issue::firstOrFail()->occurrence_count)->toBe(2);
+});

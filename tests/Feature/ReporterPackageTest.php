@@ -115,3 +115,11 @@ it('delivers a reporter payload accepted by the ingestion API', function () {
     $this->call('POST', '/api/v1/events', [], [], [], $server, $captured->body())->assertStatus(202);
     expect(Issue::count())->toBe(1);
 });
+
+it('redacts sensitive event messages before sending them', function (string $message, string $expected) {
+    Http::fake(['monitor.example.test/*' => Http::response(['accepted' => true], 202)]);
+
+    (new Reporter(new EventBuilder))->report(new RuntimeException($message));
+
+    Http::assertSent(fn ($request): bool => $request->data()['exception']['message'] === $expected);
+})->with('sensitive event messages');

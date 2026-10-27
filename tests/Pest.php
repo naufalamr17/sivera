@@ -48,3 +48,22 @@ function something()
 {
     // ..
 }
+
+dataset('sensitive event messages', [
+    'plain password' => ['password=do-not-store failed', 'password="[REDACTED]"'],
+    'access token' => ['access_token=do-not-store; context=kept', 'access_token="[REDACTED]"; context=kept'],
+    'refresh token' => ['refresh_token=do-not-store', 'refresh_token="[REDACTED]"'],
+    'client secret' => ['client_secret=do-not-store', 'client_secret="[REDACTED]"'],
+    'SMTP password' => ['smtp_password=do-not-store', 'smtp_password="[REDACTED]"'],
+    'database password' => ['database_password=do-not-store', 'database_password="[REDACTED]"'],
+    'session' => ['session=do-not-store', 'session="[REDACTED]"'],
+    'API key' => ['apikey=do-not-store', 'apikey="[REDACTED]"'],
+    'cookie' => ['Set-Cookie: do-not-store', 'Set-Cookie: "[REDACTED]"'],
+    'wildcard key' => ['my_api_token_value=do-not-store', 'my_api_token_value="[REDACTED]"'],
+    'quoted password' => ['password="do-not-store with spaces"; context=kept', 'password="[REDACTED]"; context=kept'],
+    'single quotes' => ["'new_password': 'do-not-store with spaces'", "'new_password': \"[REDACTED]\""],
+    'JSON' => ['{"password":"do-not-store","password_confirmation":"do-not-store","safe":"kept"}', '{"password":"[REDACTED]","password_confirmation":"[REDACTED]","safe":"kept"}'],
+    'escaped JSON quote' => [json_encode(['current_password' => 'do-not-store" with spaces', 'safe' => 'kept'], JSON_THROW_ON_ERROR), '{"current_password":"[REDACTED]","safe":"kept"}'],
+    'authorization' => ['AUTHORIZATION: Bearer do-not-store; context=kept', 'AUTHORIZATION: "[REDACTED]"; context=kept'],
+    'bearer token' => ['Bearer do-not-store', '[REDACTED]'],
+]);

@@ -37,16 +37,17 @@ it('validates overview page numbers on initial and polling requests', function (
 })->with([0, -1, 'invalid', 100001]);
 
 it('paginates recipients and delivery history independently', function () {
-    NotificationRule::factory()->count(22)->create();
-    $rule = NotificationRule::first();
+    $admin = User::factory()->admin()->create();
+    User::factory()->count(21)->create();
+    $rule = NotificationRule::factory()->create();
     NotificationLog::factory()->count(23)->create(['notification_rule_id' => $rule->id]);
 
-    $this->actingAs(User::factory()->admin()->create())->get(route('notifications.index', ['recipients_page' => 2]))
-        ->assertOk()->assertViewHas('rules', fn ($rules): bool => $rules->count() === 2 && $rules->currentPage() === 2)
+    $this->actingAs($admin)->get(route('notifications.index', ['recipients_page' => 2]))
+        ->assertOk()->assertViewHas('recipients', fn ($recipients): bool => $recipients->count() === 2 && $recipients->currentPage() === 2)
         ->assertViewHas('logs', fn ($logs): bool => $logs->count() === 20 && $logs->currentPage() === 1)
         ->assertSee('recipients_page=2&amp;deliveries_page=2', false);
     $this->get(route('notifications.index', ['recipients_page' => 2, 'deliveries_page' => 2]))
-        ->assertOk()->assertViewHas('rules', fn ($rules): bool => $rules->currentPage() === 2)
+        ->assertOk()->assertViewHas('recipients', fn ($recipients): bool => $recipients->currentPage() === 2)
         ->assertViewHas('logs', fn ($logs): bool => $logs->count() === 3 && $logs->currentPage() === 2);
 });
 

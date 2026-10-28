@@ -53,9 +53,5 @@ Route::middleware(['auth', EnsureActiveUser::class])->group(function () {
         Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit.index');
         Route::get('/api-logs', [ApiRequestLogController::class, 'index'])->name('api-logs.index');
         Route::get('/settings/notifications', [NotificationSettingController::class, 'index'])->name('notifications.index');
-        Route::get('/settings/notifications/create', [NotificationSettingController::class, 'create'])->name('notifications.create');
-        Route::post('/settings/notifications', [NotificationSettingController::class, 'store'])->name('notifications.store');
-        Route::get('/settings/notifications/{rule}/edit', [NotificationSettingController::class, 'edit'])->name('notifications.edit');
-        Route::put('/settings/notifications/{rule}', [NotificationSettingController::class, 'update'])->name('notifications.update');
     });
 });

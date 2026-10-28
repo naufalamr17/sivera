@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 
 #[Signature('sivera:send-digest {--date= : Local date to summarize (YYYY-MM-DD), defaults to yesterday}')]
-#[Description('Send the previous day error summary to active email recipients')]
+#[Description('Send yesterday summary to all active users and create daily issue follow-ups')]
 class SendDailyDigestCommand extends Command
 {
     public function handle(NotificationService $notifications): int
@@ -31,6 +31,9 @@ class SendDailyDigestCommand extends Command
             return self::SUCCESS;
         }
         try {
+            if (! $this->option('date')) {
+                $notifications->createDailyFollowUps($today);
+            }
             $result = $notifications->sendDigest($date);
             $this->info("Digest {$date}: {$result['sent']} sent, {$result['failed']} failed.");
 

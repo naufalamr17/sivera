@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['uuid', 'application_id', 'fingerprint', 'severity', 'status', 'exception_class', 'message', 'file', 'line', 'route', 'method', 'first_seen_at', 'last_seen_at', 'occurrence_count', 'acknowledged_at', 'investigating_at', 'resolved_at', 'ignored_at', 'reopened_at'])]
 class Issue extends Model
 {
+    public const CLOSED_STATUSES = ['RESOLVED', 'IGNORED'];
+
     use HasFactory;
 
     public function getRouteKeyName(): string

@@ -5,6 +5,7 @@ use App\Models\Application;
 use App\Models\AuditLog;
 use App\Models\EventReceipt;
 use App\Models\Issue;
+use App\Models\IssueAlert;
 use App\Models\IssueOccurrence;
 use App\Models\NotificationLog;
 use App\Models\NotificationRule;
@@ -52,7 +53,8 @@ it('retains every data category for three calendar years including leap day boun
         $apiLog = ApiRequestLog::factory()->create();
         $notification = NotificationLog::factory()->create(['issue_id' => $issue->id, 'notification_rule_id' => $rule->id]);
         $audit = AuditLog::factory()->create();
-        foreach (['issue_occurrences' => $occurrence, 'event_receipts' => $receipt, 'notification_logs' => $notification, 'audit_logs' => $audit] as $table => $record) {
+        $alert = IssueAlert::factory()->for($issue)->create();
+        foreach (['issue_occurrences' => $occurrence, 'event_receipts' => $receipt, 'notification_logs' => $notification, 'audit_logs' => $audit, 'issue_alerts' => $alert] as $table => $record) {
             DB::table($table)->where('id', $record->id)->update(['created_at' => $time]);
         }
         DB::table('api_request_logs')->where('id', $apiLog->id)->update(['received_at' => $time]);
@@ -64,6 +66,7 @@ it('retains every data category for three calendar years including leap day boun
         ->and(EventReceipt::count())->toBe(3)
         ->and(NotificationLog::count())->toBe(3)
         ->and(AuditLog::count())->toBe(3)
+        ->and(IssueAlert::count())->toBe(3)
         ->and(Issue::count())->toBe(1);
 });
 

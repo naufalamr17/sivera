@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\EventReceipt;
-use Carbon\CarbonImmutable;
+use App\Models\Issue;
+use App\Models\IssueAlert;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,22 +13,29 @@ class NotificationFeedController extends Controller
     {
         $filters = $request->validate(['after' => ['nullable', 'integer', 'min:0']]);
         $after = $filters['after'] ?? null;
-        $query = EventReceipt::query()->with('issue.application:id,name');
-        $receipts = $after === null
-            ? $query->latest('id')->limit(20)->get()->reverse()->values()
+        $initialCursor = $after === null ? (int) IssueAlert::query()->max('id') : null;
+        $query = IssueAlert::query()->with('issue.application:id,name');
+        $alerts = $after === null
+            ? $query->where('id', '<=', $initialCursor)->latest('created_at')->latest('id')->limit(20)->get()->reverse()->values()
             : $query->where('id', '>', $after)->orderBy('id')->limit(50)->get();
+        $visible = $alerts->filter(fn (IssueAlert $alert): bool => $alert->type !== 'follow_up'
+            || ! in_array($alert->issue->status, Issue::CLOSED_STATUSES, true))->values();
 
         return response()->json([
-            'cursor' => (int) ($receipts->last()?->id ?? $after ?? 0),
-            'has_more' => $after !== null && $receipts->count() === 50,
-            'events' => $receipts->map(fn (EventReceipt $receipt): array => [
-                'id' => $receipt->id, 'issue_id' => $receipt->issue->uuid,
-                'application' => $receipt->issue->application->name,
-                'exception_class' => $receipt->issue->exception_class,
-                'message' => mb_substr($receipt->issue->message, 0, 200),
-                'severity' => $receipt->issue->severity,
-                'received_at' => CarbonImmutable::parse($receipt->getRawOriginal('created_at'), 'UTC')->toIso8601String(),
-                'url' => route('issues.show', $receipt->issue),
+            'cursor' => $initialCursor ?? (int) ($alerts->last()?->id ?? $after ?? 0),
+            'has_more' => $after !== null && $alerts->count() === 50,
+            'events' => $visible->map(fn (IssueAlert $alert): array => [
+                'id' => $alert->id,
+                'issue_id' => $alert->issue->uuid,
+                'type' => $alert->type,
+                'status' => $alert->type === 'status_changed' ? $alert->status : $alert->issue->status,
+                'from_status' => $alert->from_status,
+                'application' => $alert->issue->application->name,
+                'exception_class' => $alert->issue->exception_class,
+                'message' => mb_substr($alert->issue->message, 0, 200),
+                'severity' => $alert->issue->severity,
+                'received_at' => $alert->created_at->toIso8601String(),
+                'url' => route('issues.show', $alert->issue),
             ]),
         ])->header('Cache-Control', 'private, no-store');
     }

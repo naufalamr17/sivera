@@ -25,7 +25,7 @@ class IndexIssueRequest extends FormRequest
         return [
             'application' => ['nullable', 'integer'],
             'severity' => ['nullable', 'in:INFO,WARNING,ERROR,CRITICAL'],
-            'status' => ['nullable', 'in:NEW,ACKNOWLEDGED,INVESTIGATING,RESOLVED,IGNORED,REOPENED'],
+            'status' => ['nullable', 'in:ACTIVE,NEW,ACKNOWLEDGED,INVESTIGATING,RESOLVED,IGNORED,REOPENED'],
             'exception_class' => ['nullable', 'string', 'max:255'],
             'route' => ['nullable', 'string', 'max:255'],
             'from' => ['nullable', 'date'],

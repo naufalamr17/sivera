@@ -5,6 +5,7 @@ namespace App\Services\Sivera;
 use App\Models\Application;
 use App\Models\EventReceipt;
 use App\Models\Issue;
+use App\Models\IssueAlert;
 use App\Models\IssueOccurrence;
 use App\Models\IssueStatusHistory;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ class EventIngestionService
             $file = $this->relativePath($exception['file'] ?? null);
             $route = $this->clean($request['route'] ?? null);
             $now = now();
+            $statusHistory = null;
             $fingerprint = hash('sha256', implode("\n", [
                 $application->id,
                 $exception['class'],
@@ -47,7 +49,7 @@ class EventIngestionService
                 $issue->last_seen_at = $now;
 
                 if ($issue->status === 'RESOLVED' && config('sivera.auto_reopen', true)) {
-                    IssueStatusHistory::create([
+                    $statusHistory = IssueStatusHistory::create([
                         'issue_id' => $issue->id,
                         'from_status' => 'RESOLVED',
                         'to_status' => 'REOPENED',
@@ -76,11 +78,21 @@ class EventIngestionService
                 ]);
             }
 
-            EventReceipt::create([
+            $receipt = EventReceipt::create([
                 'issue_id' => $issue->id,
                 'event_id' => $event['event_id'],
                 'occurred_at' => $event['occurred_at'],
             ]);
+            IssueAlert::create(['issue_id' => $issue->id, 'event_receipt_id' => $receipt->id, 'type' => 'event']);
+            if ($statusHistory !== null) {
+                IssueAlert::create([
+                    'issue_id' => $issue->id,
+                    'status_history_id' => $statusHistory->id,
+                    'type' => 'status_changed',
+                    'from_status' => 'RESOLVED',
+                    'status' => 'REOPENED',
+                ]);
+            }
 
             if ($this->shouldStoreDetail($issue->occurrence_count)) {
                 $frames = array_map(fn (array $frame): array => [

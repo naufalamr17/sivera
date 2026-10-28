@@ -5,6 +5,7 @@ use App\Mail\DailyDigestMail;
 use App\Models\Application;
 use App\Models\EventReceipt;
 use App\Models\Issue;
+use App\Models\IssueAlert;
 use App\Models\NotificationLog;
 use App\Models\NotificationRule;
 use App\Models\User;
@@ -41,13 +42,14 @@ it('ingests bursts without sending per event email and keeps live activity avail
         ->assertOk()->assertJsonCount(20, 'events')->assertJsonPath('cursor', 50);
 });
 
-it('sends one previous local day summary per active email recipient and prevents duplicate delivery', function () {
+it('sends one previous local day summary to every active user and prevents duplicate delivery', function () {
     $this->travelTo(now()->setDate(2026, 10, 27)->setTime(1, 0));
     config()->set('sivera.timezone', 'Asia/Jakarta');
     Mail::fake();
-    NotificationRule::factory()->create(['target' => 'alerts@example.test']);
-    NotificationRule::factory()->create(['target' => 'ALERTS@example.test']);
-    NotificationRule::factory()->create(['is_active' => false]);
+    User::factory()->admin()->create(['email' => 'alerts@example.test']);
+    User::factory()->create(['email' => 'viewer@example.test']);
+    User::factory()->create(['email' => 'ALERTS@example.test']);
+    User::factory()->create(['is_active' => false]);
     NotificationRule::factory()->create(['channel' => 'qontak', 'target' => '6281234567890']);
     $issue = Issue::factory()->create(['severity' => 'CRITICAL', 'message' => 'Database unavailable']);
     foreach (['2026-10-25 17:00:00', '2026-10-26 16:59:59', '2026-10-25 16:59:59', '2026-10-26 17:00:00'] as $time) {
@@ -56,14 +58,15 @@ it('sends one previous local day summary per active email recipient and prevents
     }
     $this->artisan('sivera:send-digest')->assertSuccessful();
     $this->artisan('sivera:send-digest')->assertSuccessful();
-    Mail::assertSentCount(1);
+    Mail::assertSentCount(2);
+    Mail::assertSent(DailyDigestMail::class, fn ($mail) => $mail->hasTo('viewer@example.test'));
     Mail::assertSent(DailyDigestMail::class, function (DailyDigestMail $mail): bool {
         expect($mail->summary['from'])->toBe('2026-10-26')->and($mail->summary['events'])->toBe(2);
         expect($mail->render())->toContain('Database unavailable', '2026-10-26', 'Inspect issue');
 
         return $mail->hasTo('alerts@example.test');
     });
-    expect(NotificationLog::count())->toBe(1)->and(NotificationLog::first()->status)->toBe('sent')
+    expect(NotificationLog::count())->toBe(2)->and(NotificationLog::first()->status)->toBe('sent')
         ->and(NotificationLog::first()->issue_id)->toBeNull();
 });
 
@@ -73,13 +76,14 @@ it('sends a clear zero event summary and skips legacy queued notifications', fun
     $legacy = NotificationLog::factory()->create(['notification_rule_id' => $rule->id]);
     SendNotificationJob::dispatchSync($legacy->id);
     Mail::assertNothingSent();
+    User::factory()->create();
     $this->artisan('sivera:send-digest', ['--date' => now()->subDays(2)->toDateString()])->assertSuccessful();
     Mail::assertSent(DailyDigestMail::class, fn ($mail) => $mail->summary['events'] === 0);
 });
 
 it('records a failed delivery and retries it without resending successful recipients', function () {
-    NotificationRule::factory()->create(['target' => 'first@example.test']);
-    NotificationRule::factory()->create(['target' => 'second@example.test']);
+    User::factory()->create(['email' => 'first@example.test']);
+    User::factory()->create(['email' => 'second@example.test']);
     Mail::shouldReceive('to')->once()->with('first@example.test')->andThrow(new RuntimeException('SMTP unavailable'));
     Mail::shouldReceive('to')->once()->with('second@example.test')->andReturnSelf();
     Mail::shouldReceive('send')->once();
@@ -102,16 +106,14 @@ it('rejects invalid and unfinished digest days', function (string $date) {
     Mail::assertNothingSent();
 })->with(['not-a-date', '2026-02-30', '2026-10-27', '2026-10-28']);
 
-it('allows only admins to manage email recipients and rejects whatsapp', function () {
-    $payload = ['name' => 'Morning operations', 'target' => 'alerts@example.test', 'is_active' => '1'];
-    $this->actingAs(User::factory()->create())->post(route('notifications.store'), $payload)->assertForbidden();
-    $this->actingAs(User::factory()->admin()->create())->post(route('notifications.store'), $payload)
-        ->assertRedirect(route('notifications.index'));
-    expect(NotificationRule::first()->trigger)->toBe('daily_digest')->and(NotificationRule::first()->channel)->toBe('email');
-    $this->post(route('notifications.store'), [...$payload, 'channel' => 'qontak'])->assertSessionHasErrors('channel');
-    $legacy = NotificationRule::factory()->create(['channel' => 'qontak']);
-    $this->get(route('notifications.edit', $legacy))->assertNotFound();
-    $this->put(route('notifications.update', $legacy), $payload)->assertNotFound();
+it('shows active users as recipients to admins and retires manual recipient configuration', function () {
+    $viewer = User::factory()->create(['email' => 'viewer@example.test']);
+    User::factory()->create(['email' => 'disabled@example.test', 'is_active' => false]);
+    $this->actingAs($viewer)->get(route('notifications.index'))->assertForbidden();
+    $this->actingAs(User::factory()->admin()->create())->get(route('notifications.index'))->assertOk()
+        ->assertSee('viewer@example.test')->assertDontSee('disabled@example.test')->assertDontSee('Add recipient');
+    $this->get('/settings/notifications/create')->assertNotFound();
+    $this->post('/settings/notifications', ['target' => 'outside@example.test'])->assertStatus(405);
 });
 
 it('keeps severity and status changes independent of email delivery', function () {
@@ -128,7 +130,9 @@ it('pages live activity without losing events during a burst and protects the en
     $this->getJson(route('notifications.feed'))->assertUnauthorized();
     $user = User::factory()->create();
     $issue = Issue::factory()->create(['message' => '<script>alert(1)</script>']);
-    EventReceipt::factory()->for($issue)->count(55)->create();
+    foreach (EventReceipt::factory()->for($issue)->count(55)->create() as $receipt) {
+        IssueAlert::factory()->for($issue)->create(['type' => 'event', 'event_receipt_id' => $receipt->id]);
+    }
     $first = $this->actingAs($user)->getJson(route('notifications.feed', ['after' => 0]))->assertOk()
         ->assertJsonCount(50, 'events')->assertJsonPath('has_more', true)->assertJsonPath('cursor', 50);
     expect($first->json('events.0.received_at'))->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/');

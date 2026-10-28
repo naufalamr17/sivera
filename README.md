@@ -48,7 +48,7 @@ Open `http://localhost:8000/login`. For frontend development, run `npm run dev` 
 
 Do not use the sample accounts in a deployed environment. `UserSeeder` skips environments other than `local` and `testing`; create the first deployed administrator with `php artisan sivera:create-admin`. That command prompts for a name, a unique email address, and a password of at least 12 characters.
 
-Optional sample applications and issues can be added outside production with `php artisan db:seed --class=SiveraDemoSeeder`. `NotificationRulesSeeder` creates a sample email recipient addressed to `alerts@example.test`; configure a real target before using notifications.
+Optional sample applications and issues can be added outside production with `php artisan db:seed --class=SiveraDemoSeeder`.
 
 ### Background processes
 
@@ -70,7 +70,7 @@ The daily email command sends synchronously and records delivery status; it does
 | Own account password | Change | Change |
 | Applications and API credentials | Manage | View applications |
 | Issue status, severity, and comments | Manage | View |
-| Users, email recipients, audit logs, and API logs | Manage/view | No access |
+| Users, notification delivery history, audit logs, and API logs | Manage/view | No access |
 
 Inactive users cannot access authenticated pages. The dashboard refreshes its summary every 5 seconds by default; `SIVERA_POLL_SECONDS` is limited to 5–10 seconds.
 
@@ -160,7 +160,7 @@ Run `php artisan sivera:test` in the source application to send a synthetic exce
 
 7. Open **Issues** in SIVERA and verify the synthetic `SIVERA connection test` issue, application, occurrence, and stack trace. Laravel exceptions are then reported automatically; controller and business-logic changes are not required. Existing Laravel logging continues to operate.
 
-Email summary recipients are managed in SIVERA under **Notifications**. Reporter installation does not configure recipients. WhatsApp delivery has been removed.
+Every active SIVERA user automatically receives the daily email summary. Manage names, addresses, and active state under **Users**; **Notifications** displays the active user recipients and delivery history. WhatsApp delivery has been removed.
 
 If the test fails, check the HTTPS URL and certificate, outbound network access, application slug, registered environment, client ID, secret, and server clock. A `401` indicates an authentication or security check failed; `422` indicates an invalid payload; `429` indicates the configured rate limit. The package manifest allows Laravel 10–13, but installation and delivery must still be checked in each target application.
 
@@ -205,9 +205,13 @@ Use the credential secret as the HMAC key. Timestamps must be within five minute
 
 ## Notifications and retention
 
-Admins add email recipients under **Notifications**. Each active recipient receives one summary per date at the morning schedule. The summary includes event counts, active/critical issues, top five applications by ERROR/CRITICAL event count, and top five grouped errors with their messages, source locations, and issue links. Days with zero events produce an explicit zero-event summary. There are no per-event emails or frequency/cooldown rules.
+Every **active Admin and Viewer** receives the daily summary automatically at **07:00 WIB (Asia/Jakarta)** by default. No separate recipient rule is required. Inactive users and legacy external recipient rules are excluded; duplicate email addresses receive one copy per date. **Notifications** lists the active users and delivery history. User email addresses and account state are managed under **Users**.
 
-Email uses Laravel's `MAIL_*` settings. Configure `MAIL_MAILER=smtp` (or another real transport), the SMTP credentials, and a valid sender. The `log` and `array` transports do not deliver external email. Add recipients separately; `MAIL_FROM_ADDRESS` is the sender, not a recipient.
+The email always covers the previous local calendar day, including days with zero events. It includes event counts, active/critical/resolved/ignored issue counts, top-five ERROR/CRITICAL application and issue rankings, and up to 20 status changes during that day. **RESOLVED and IGNORED are included in the summary and in live status-change notifications.** There are no per-event emails.
+
+A separate **Daily follow-up** section lists issues whose current status is neither RESOLVED nor IGNORED, including older issues without events yesterday. The email displays up to 20 pending issues and links to the **All active statuses** issue filter for the complete paginated list. Each scheduled daily run also creates one in-app follow-up per outstanding issue per local day. Repeated runs cannot duplicate that day's follow-up.
+
+Email uses Laravel's `MAIL_*` settings. Configure `MAIL_MAILER=smtp` (or another real transport), the SMTP credentials, and a valid sender. The `log` and `array` transports do not deliver external email. `MAIL_FROM_ADDRESS` is the sender; the recipients are active user accounts.
 
 ### Test email from the terminal
 
@@ -237,11 +241,13 @@ php artisan sivera:send-digest --date=2026-10-26
 
 Omit `--date` for yesterday in `SIVERA_TIMEZONE`. Successful recipient/date pairs are skipped on repeat runs; failed attempts are recorded and can be retried using the same command. An application lock prevents overlapping runs. SMTP acceptance and the database log are separate operations: a process crash after SMTP acceptance can still cause a retry to duplicate delivery. Use the delivery history to investigate failures. Logs follow the retention policy, so avoid rerunning dates older than retained delivery history.
 
-The migration converts existing email rules into daily recipients, deactivates WhatsApp rules, and preserves historical logs. Legacy rule fields remain for historical compatibility and no longer control delivery. Old queued per-event jobs are ignored. Rolling back does not restore the original rule trigger/severity settings; restore a database backup to recover those exact settings.
+Apply the new migrations before enabling this version: `php artisan migrate --force`. Deploy in maintenance mode while the activity backfill runs, then rebuild frontend assets and refresh configuration. The new activity table backfills receipt and status-history records in chunks without modifying their source data. Delivery logs gain a nullable user reference; historical rule-based logs remain available. Manual recipient management routes are retired, and legacy rules no longer control delivery. Old jobs without an active user recipient do not send.
 
-The bell appears on all authenticated pages for Admins and Viewers. It polls `GET /notifications/feed` every 5–10 seconds independently of dashboard date filters, follows an event ID cursor, and catches up in batches of 50. The list groups repeated activity by issue, retains up to 100 events, and displays up to 20 issues. Read state is stored per user in that browser, rather than synchronized between devices. First visit loads recent activity without desktop alerts for old events. A burst produces a grouped in-app toast.
+For rollback, the previous code can run with the additive tables/columns left in place. Rolling back the activity migration removes the activity stream; source receipts and status histories remain. Rolling back the user-recipient migration removes its user reference but keeps the legacy rule nullable to preserve delivery history. Do not roll back migrations merely to restart a worker.
 
-Click **Enable browser alerts** in the bell to request permission. Desktop notifications require a supported browser and a secure context (trusted HTTPS or localhost). They work while SIVERA is open; Web Push after closing the site is outside this implementation. Notifications show only application and severity on the lock screen. If permission is denied or unsupported, in-app alerts continue. See [MDN's Notifications API guide](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
+The bell appears on all authenticated pages for Admins and Viewers. It polls `GET /notifications/feed` every 5–10 seconds independently of dashboard date filters, follows an activity ID cursor, and catches up in batches of 50. The stream includes received errors, all status changes (including RESOLVED and IGNORED), and daily follow-ups for outstanding issues. It groups repeated activity by issue, retains up to 100 updates, and displays up to 20 issues. Follow-up records for issues now resolved or ignored are not emitted; their status-change alerts still are. Read state is stored per user in that browser, rather than synchronized between devices. First visit loads recent activity without desktop alerts for old events. A burst produces a grouped in-app toast.
+
+Click **Enable browser alerts** in the bell to request permission. Desktop notifications require a supported browser and a secure context (trusted HTTPS or localhost). They work while SIVERA is open; Web Push after closing the site is outside this implementation. Desktop notifications show application and severity or the changed status on the lock screen. If permission is denied or unsupported, in-app alerts continue. See [MDN's Notifications API guide](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
 
 ## Dashboard date filters and rankings
 
@@ -261,7 +267,7 @@ Retention settings are defined in `.env.example` and [`config/sivera.php`](confi
 
 Use `SIVERA_RETENTION_YEARS=3` for the shared retention policy. The minimum is three years; larger values extend retention for all historical categories. Legacy `SIVERA_*_RETENTION_DAYS` variables are no longer used, so old 30/90/365-day settings cannot shorten the new policy. After deploying, run `php artisan config:clear` or rebuild the server's configuration cache.
 
-Cleanup still runs **daily** and permanently deletes history **older than three calendar years**; it does not run only once every three years. The cutoff uses calendar-year subtraction with leap-day handling. Issues of **every status, including open issues**, are deleted when `last_seen_at` is older than the cutoff; first-seen age alone does not delete a recurring issue. Deleting an issue also removes its associated occurrences, status history, comments, and per-issue notification logs. Accounts, application registrations, credentials, and recipient settings are not removed by history cleanup. A retention notice is displayed on workspace pages.
+Cleanup still runs **daily** and permanently deletes history **older than three calendar years**; it does not run only once every three years. The cutoff uses calendar-year subtraction with leap-day handling. Issues of **every status, including open issues**, are deleted when `last_seen_at` is older than the cutoff; first-seen age alone does not delete a recurring issue. Deleting an issue also removes its associated occurrences, status history, comments, and per-issue notification logs. Activity notifications follow the same retention period. Accounts, application registrations, credentials, and legacy recipient settings are not removed by history cleanup. A retention notice is displayed on workspace pages.
 
 API request logs contain request metadata, not payloads or credential secrets. Event text is sanitized before storage, and application credential secrets are encrypted at rest. Rotated credentials have a 24-hour grace period unless revoked earlier.
 
@@ -274,7 +280,7 @@ app/
   Http/Middleware/        # HTTPS, active-user, and API signature checks
   Http/Requests/          # Input validation
   Jobs/                   # Daily digest delivery (called synchronously)
-  Models/                 # Users, applications, issues, logs, and rules
+  Models/                 # Users, applications, issues, activity, and delivery logs
   Services/Sivera/        # Event ingestion, date analytics, daily digest logic
 config/                   # Application and SIVERA settings
 database/

@@ -7,7 +7,7 @@
     <div class="filter-primary">
         <select name="application" aria-label="Application"><option value="">All applications</option>@foreach($applications as $application)<option value="{{ $application->id }}" @selected(request('application') == $application->id)>{{ $application->name }}</option>@endforeach</select>
         <select name="severity" aria-label="Severity"><option value="">All severities</option>@foreach(['INFO','WARNING','ERROR','CRITICAL'] as $value)<option value="{{ $value }}" @selected(request('severity') === $value)>{{ $value }}</option>@endforeach</select>
-        <select name="status" aria-label="Status"><option value="">All statuses</option>@foreach(['NEW','ACKNOWLEDGED','INVESTIGATING','RESOLVED','IGNORED','REOPENED'] as $value)<option value="{{ $value }}" @selected(request('status') === $value)>{{ $value }}</option>@endforeach</select>
+        <select name="status" aria-label="Status"><option value="">All statuses</option><option value="ACTIVE" @selected(request('status') === 'ACTIVE')>All active statuses</option>@foreach(['NEW','ACKNOWLEDGED','INVESTIGATING','RESOLVED','IGNORED','REOPENED'] as $value)<option value="{{ $value }}" @selected(request('status') === $value)>{{ $value }}</option>@endforeach</select>
         <input type="search" name="search" placeholder="Search issues, messages, routes, IDs" aria-label="Search issues" value="{{ request('search') }}">
         <button class="button primary" type="submit">Search</button>
     </div>

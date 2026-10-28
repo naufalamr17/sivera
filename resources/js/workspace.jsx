@@ -34,7 +34,12 @@ import {
     SheetTitle,
     SheetTrigger,
 } from "./components/ui";
-import { mergeEvents, groupEvents } from "./notification-state";
+import {
+    mergeEvents,
+    groupEvents,
+    notificationHeading,
+    notificationTitle,
+} from "./notification-state";
 
 const icons = {
     overview: LayoutDashboard,
@@ -159,8 +164,8 @@ function Navigation({ config }) {
 }
 
 function NotificationCenter({ config }) {
-    const readKey = "sivera.read." + config.user.id;
-    const deliveredKey = "sivera.delivered." + config.user.id;
+    const readKey = "sivera.read.v2." + config.user.id;
+    const deliveredKey = "sivera.delivered.v2." + config.user.id;
     const [events, setEvents] = useState([]);
     const [readCursor, setReadCursor] = useState(
         Number(readStored(readKey) || 0),
@@ -217,12 +222,16 @@ function NotificationCenter({ config }) {
                         data.events.map((event) => event.issue_id),
                     ).size;
                     setToast({
+                        title:
+                            issueCount === 1
+                                ? notificationHeading(latest)
+                                : "New issue activity",
                         text:
                             issueCount === 1
                                 ? latest.application +
                                   " · " +
-                                  latest.exception_class
-                                : issueCount + " issues received new events",
+                                  notificationTitle(latest)
+                                : issueCount + " issues have new activity",
                         url: latest.url,
                     });
                     const delivered = Number(readStored(deliveredKey) || 0);
@@ -235,12 +244,14 @@ function NotificationCenter({ config }) {
                         storeValue(deliveredKey, data.cursor);
                         try {
                             const notification = new Notification(
-                                "Sivera · New error activity",
+                                "Sivera · " + notificationHeading(latest),
                                 {
                                     body:
                                         latest.application +
                                         " · " +
-                                        latest.severity,
+                                        (latest.type === "status_changed"
+                                            ? latest.status
+                                            : latest.severity),
                                     icon: config.icon,
                                     tag: "sivera-activity",
                                 },
@@ -353,7 +364,7 @@ function NotificationCenter({ config }) {
                         <div>
                             <h2>Notifications</h2>
                             <p>
-                                Latest error activity across your applications.
+                                Latest issue activity across your applications.
                             </p>
                         </div>
                         <Button
@@ -426,13 +437,13 @@ function NotificationCenter({ config }) {
                                     />
                                     <div>
                                         <strong>{event.application}</strong>
-                                        <p>{event.exception_class}</p>
+                                        <p>{notificationTitle(event)}</p>
                                         <small>
                                             {timeLabel(event.received_at)}
                                             {event.count > 1
                                                 ? " · " +
                                                   event.count +
-                                                  " recent events"
+                                                  " recent updates"
                                                 : ""}
                                         </small>
                                     </div>
@@ -453,7 +464,7 @@ function NotificationCenter({ config }) {
                     <div className="live-toast" role="status">
                         <CircleAlert size={18} />
                         <div>
-                            <strong>New error activity</strong>
+                            <strong>{toast.title}</strong>
                             <a href={toast.url}>{toast.text}</a>
                         </div>
                         <Button

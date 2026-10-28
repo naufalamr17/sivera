@@ -134,7 +134,7 @@ Admins can:
 - Resolve issues.
 - Reopen issues.
 - Ignore issues.
-- Manage notification rules.
+- Manage user accounts that automatically receive daily summaries.
 - Configure email notifications.
 - View API request logs.
 - View audit logs.
@@ -1468,7 +1468,7 @@ Admin revoke credential
 Admin change issue status
 Admin change severity
 Admin add comment
-Admin change notification rule
+Admin change user email or active state
 Admin create/update/deactivate user
 ```
 
@@ -1636,11 +1636,13 @@ The admin must rotate the secret if it is lost.
 
 The current notification channels are daily email, live in-app activity, and optional desktop browser notifications. WhatsApp delivery is removed.
 
-Email is pulled by the Laravel scheduler once each morning at `SIVERA_DIGEST_TIME`, default 07:00 in `SIVERA_TIMEZONE=Asia/Jakarta`. It covers the previous local calendar day. There are no event-triggered emails. Admins manage recipient names, email addresses, and active state under Notifications. Mail transport credentials remain in server environment settings.
+Email is pulled by the Laravel scheduler once each morning at `SIVERA_DIGEST_TIME`, default **07:00 WIB** in `SIVERA_TIMEZONE=Asia/Jakarta`. Every active Admin and Viewer receives the previous local day's summary, including zero-event days. Recipients follow user email addresses and active state automatically. Notifications displays these users and delivery history; there are no manual recipient rules or event-triggered emails. Mail credentials remain in server environment settings.
+
+Live notifications include all received error events and status changes, including transitions to RESOLVED and IGNORED. Daily follow-up applies only to issues whose current status is neither of those two values.
 
 # 48. Digest Delivery and Deduplication
 
-Run `php artisan sivera:send-digest` for yesterday, or `--date=YYYY-MM-DD` for a completed local day. The command sends synchronously, needs the scheduler but no mail queue worker, and uses a lock against concurrent runs. Each recipient/date pair has one delivery log, shared across duplicate recipient rules.
+Run `php artisan sivera:send-digest` for yesterday, or `--date=YYYY-MM-DD` for a completed local day. The command sends synchronously, needs the scheduler but no mail queue worker, and uses a lock against concurrent runs. Each recipient/date pair has one delivery log, deduplicated by normalized user email address.
 
 Successful pairs are skipped when rerun. Failed sends remain visible and may be retried with the same command. A failure for one recipient must not prevent other recipients from receiving their summaries. A zero-event day still sends a clear summary. SMTP acceptance and database updates cannot be atomic: a crash between them can duplicate delivery on retry.
 
@@ -1648,31 +1650,35 @@ Successful pairs are skipped when rerun. Failed sends remain visible and may be 
 
 The HTML and text summary includes:
 - Local summary date and timezone.
-- Total received events, active issues, and critical issues.
+- Total received events and active, critical, resolved, and ignored issue counts for the previous day.
 - Top five applications by ERROR/CRITICAL events.
 - Top five errors with exception, stored message, period count, source location, route, and authenticated issue link.
+- Up to 20 status changes during the previous day, including RESOLVED and IGNORED transitions even without an error event that day.
+- Daily follow-up: all outstanding issues counted regardless of last event date, with up to 20 displayed and a link to the full paginated All active statuses filter. RESOLVED and IGNORED are excluded from follow-up only.
 - A link to the dashboard for the same date.
 - A note that severity/status reflect current values.
 
-`MAIL_FROM_ADDRESS` is the sender. Recipients must be configured separately. A log/array mailer does not deliver real email.
+`MAIL_FROM_ADDRESS` is the sender. Recipients are all active user accounts, without a separate recipient setting. A log/array mailer does not deliver real email.
 
 # 50. Live In-App and Browser Alerts
 
-Admin and Viewer receive activity through authenticated polling on every workspace page. Use receipt IDs as cursors so an unchanged critical count cannot hide a new issue. Catch up in batches of 50; do not skip overflowing batches.
+Admin and Viewer receive activity through authenticated polling on every workspace page. Use activity IDs as cursors so an unchanged critical count cannot hide a new issue. Catch up in batches of 50; do not skip overflowing batches.
 
 Retain up to 100 recent events and display up to 20 grouped issues in the bell. A new batch triggers one grouped toast. Read state is per user/browser in local storage. On the first visit, show recent activity without generating desktop notifications for historical events.
 
-Request browser permission only after clicking Enable browser alerts. Use a trusted secure context and handle denied/unsupported states without disabling in-app alerts. Desktop notifications show only application and severity, rather than detailed error messages on the lock screen. Notifications require an open SIVERA page; closed-site Web Push is not included.
+Request browser permission only after clicking Enable browser alerts. Use a trusted secure context and handle denied/unsupported states without disabling in-app alerts. Desktop notifications show application and severity or changed status, rather than detailed error messages on the lock screen. Notifications require an open SIVERA page; closed-site Web Push is not included.
 
 # 51. Notification Data Model
 
-`notification_rules` stores daily email recipients: id, name, trigger (`daily_digest`), channel (`email`), target, is_active, timestamps. Legacy trigger/threshold/cooldown/target-name fields are retained for compatibility and no longer control delivery.
+`users` is the authoritative recipient list: all active Admins and Viewers receive the daily summary. `notification_rules` remains for historical compatibility and no longer controls delivery; its management routes are retired.
 
-`notification_logs` stores id, nullable issue_id (historical per-issue records), notification_rule_id, channel, status, response_code (historical), sent_at, created_at, digest_date, digest_recipient. A unique constraint covers digest_date + normalized digest_recipient.
+`notification_logs` stores id, nullable issue_id (historical per-issue records), nullable notification_rule_id, nullable user_id, channel, status, response_code (historical), sent_at, created_at, digest_date, digest_recipient. A unique constraint covers digest_date + normalized digest_recipient.
 
-The migration converts existing email rules into daily recipients, disables WhatsApp rules, and preserves historical logs. Old queued per-event jobs do not send. Rollback keeps issue_id nullable for historical digests and does not recreate exact original trigger/severity settings; restore a backup if those values are needed.
+The user-recipient migration preserves historical logs and adds a nullable user reference with null-on-delete. A job rechecks that the user is active and still owns the target address before sending. Legacy jobs without an active user recipient do not send. Rollback removes the user reference while keeping the legacy rule nullable, preserving user-based delivery history.
 
-The live activity feed reuses `event_receipts` and issue/application relationships; it does not need email rules or a separate notifications table. Do not store provider credentials in logs.
+`issue_alerts` stores a shared activity stream visible to all active users: id, issue_id, optional unique event_receipt_id/status_history_id, type (event/status_changed/follow_up), from_status, status snapshot, follow_up_date, created_at. A unique issue_id + follow_up_date prevents duplicate daily follow-ups. Receipt and status changes are recorded transactionally. Existing receipt/status records are backfilled in chunks with original timestamps; retries do not duplicate alerts.
+
+The scheduled daily command creates follow-ups once per current local day, then emails yesterday's summary. Historical `--date` email retries do not create today's in-app follow-ups. Closed follow-ups are suppressed without blocking cursor advancement. Deploy migrations before the new writers, preferably in maintenance mode. Previous source code may run with the additive schema left in place; rolling back the activity table loses alert history while keeping receipts and status histories. Do not store provider credentials in logs.
 
 ---
 
@@ -2357,13 +2363,14 @@ Monitoring and administration write requests from a Viewer must return:
 
 1. Fifty occurrences of one critical issue remain one issue and fifty receipt records.
 2. No per-event email or WhatsApp delivery occurs.
-3. One daily summary is sent per active email recipient for the previous local day, including zero-event days.
+3. Every active Admin and Viewer receives the previous local day's summary at 07:00 WIB by default, including zero-event days, without manual recipient rules.
 4. Repeating a completed date skips successful deliveries; failed deliveries are logged and retryable.
-5. Disabled recipients and legacy WhatsApp jobs do not send.
+5. Inactive users, changed user addresses, and legacy recipient/WhatsApp jobs do not send.
 6. A burst exceeding 50 events is fetched through successive cursor batches without loss.
-7. Admin and Viewer receive live bell/toast updates without full-page reloads.
-8. Browser alerts require an explicit click and permission; denial leaves in-app activity working.
-9. Receipt-date filtering and local day boundaries apply consistently to email and dashboard analytics.
+7. Admin and Viewer receive live bell/toast updates for events and all status changes, including RESOLVED and IGNORED, without full-page reloads.
+8. Daily follow-up is generated once per day only for issues outside RESOLVED/IGNORED, including issues without events yesterday.
+9. Browser alerts require an explicit click and permission; denial leaves in-app activity working.
+10. Receipt-date filtering and local day boundaries apply consistently to email and dashboard analytics.
 
 ---
 
@@ -2476,8 +2483,9 @@ Build:
 
 ```text
 Daily email digest
-Email recipients
-Live in-app notifications
+All active users as email recipients
+Live event and status-change notifications
+Daily follow-ups for outstanding issues
 Optional desktop browser alerts
 Per-date delivery logs and deduplication
 ```

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['issue_id', 'notification_rule_id', 'channel', 'status', 'response_code', 'sent_at', 'digest_date', 'digest_recipient'])]
+#[Fillable(['issue_id', 'notification_rule_id', 'user_id', 'channel', 'status', 'response_code', 'sent_at', 'digest_date', 'digest_recipient'])]
 class NotificationLog extends Model
 {
     use HasFactory;
@@ -22,6 +22,11 @@ class NotificationLog extends Model
     public function rule(): BelongsTo
     {
         return $this->belongsTo(NotificationRule::class, 'notification_rule_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     protected function casts(): array

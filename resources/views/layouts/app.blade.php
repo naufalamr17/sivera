@@ -18,7 +18,7 @@ $navigation = [
 ];
 if (auth()->user()->can('admin')) {
     $navigation = [...$navigation,
-        ['label' => 'Notifications', 'icon' => 'notifications', 'url' => route('notifications.index'), 'active' => request()->routeIs('notifications.index', 'notifications.create', 'notifications.edit'), 'admin' => true],
+        ['label' => 'Notifications', 'icon' => 'notifications', 'url' => route('notifications.index'), 'active' => request()->routeIs('notifications.index'), 'admin' => true],
         ['label' => 'Users', 'icon' => 'users', 'url' => route('users.index'), 'active' => request()->routeIs('users*')],
         ['label' => 'Audit logs', 'icon' => 'audit', 'url' => route('audit.index'), 'active' => request()->routeIs('audit*')],
         ['label' => 'API logs', 'icon' => 'api', 'url' => route('api-logs.index'), 'active' => request()->routeIs('api-logs*')],

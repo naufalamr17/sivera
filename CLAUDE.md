@@ -4,7 +4,7 @@ Read and follow [AGENTS.md](AGENTS.md) before editing this project. Laravel Boos
 
 Current stack: PHP 8.3, Laravel 13, MySQL/MariaDB, Blade management pages, React 19 workspace/dashboard, shadcn/ui components with Radix, Tailwind CSS 4, Vite 8. Confirm installed versions before using package APIs.
 
-Notification scope: daily email digest at 07:00 Asia/Jakarta by default; live in-app and optional browser alerts use authenticated polling. WhatsApp delivery is removed. Email configuration and recipients are separate. See [README.md](README.md) and [PRD_SIVERA.md](PRD_SIVERA.md).
+Notification scope: daily email digest at 07:00 Asia/Jakarta by default; live in-app and optional browser alerts use authenticated polling. WhatsApp delivery is removed. All active users receive yesterday's summary; manual recipient rules are retired. All status changes, including RESOLVED/IGNORED, remain notified. Daily follow-ups exclude only those two statuses and include older outstanding issues. Apply activity/user-recipient migrations before running the new code. See [README.md](README.md) and [PRD_SIVERA.md](PRD_SIVERA.md).
 
 Verify PHP changes with the relevant Pest tests and `php vendor/bin/pint --dirty --format agent`. For frontend changes run `npm run build` and `node --test tests/Frontend/notifications.test.mjs`. Windows CLI tests may require loading `pdo_sqlite` and `sqlite3` explicitly, as documented in README.
 

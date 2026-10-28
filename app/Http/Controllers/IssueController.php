@@ -7,11 +7,13 @@ use App\Http\Requests\UpdateIssueRequest;
 use App\Models\Application;
 use App\Models\AuditLog;
 use App\Models\Issue;
+use App\Models\IssueAlert;
 use App\Models\IssueComment;
 use App\Models\IssueStatusHistory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class IssueController extends Controller
@@ -22,7 +24,8 @@ class IssueController extends Controller
         $issues = Issue::query()->with('application:id,name,slug')
             ->when($filters['application'] ?? null, fn ($query, $value) => $query->where('application_id', $value))
             ->when($filters['severity'] ?? null, fn ($query, $value) => $query->where('severity', $value))
-            ->when($filters['status'] ?? null, fn ($query, $value) => $query->where('status', $value))
+            ->when($filters['status'] ?? null, fn ($query, $value) => $value === 'ACTIVE'
+                ? $query->whereNotIn('status', Issue::CLOSED_STATUSES) : $query->where('status', $value))
             ->when($filters['exception_class'] ?? null, fn ($query, $value) => $query->where('exception_class', 'like', '%'.$value.'%'))
             ->when($filters['route'] ?? null, fn ($query, $value) => $query->where('route', 'like', '%'.$value.'%'))
             ->when($filters['from'] ?? null, fn ($query, $value) => $query->where('last_seen_at', '>=', Carbon::parse($value)->startOfDay()))
@@ -58,18 +61,20 @@ class IssueController extends Controller
         $previous = $issue->status;
 
         if ($previous !== $status) {
-            $issue->update([
-                'status' => $status,
-                strtolower($status).'_at' => now(),
-            ]);
-            IssueStatusHistory::create([
-                'issue_id' => $issue->id,
-                'from_status' => $previous,
-                'to_status' => $status,
-                'changed_by' => $request->user()->id,
-            ]);
-            $this->audit($request, 'issue.status_changed', $issue);
-
+            DB::transaction(function () use ($request, $issue, $previous, $status): void {
+                $issue->update([
+                    'status' => $status,
+                    strtolower($status).'_at' => now(),
+                ]);
+                $history = IssueStatusHistory::create([
+                    'issue_id' => $issue->id,
+                    'from_status' => $previous,
+                    'to_status' => $status,
+                    'changed_by' => $request->user()->id,
+                ]);
+                $this->audit($request, 'issue.status_changed', $issue);
+                IssueAlert::create(['issue_id' => $issue->id, 'status_history_id' => $history->id, 'type' => 'status_changed', 'from_status' => $previous, 'status' => $status]);
+            });
         }
 
         return back()->with('status', 'Issue status updated.');

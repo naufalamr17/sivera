@@ -20,7 +20,7 @@ class TestConnectionCommand extends Command
         $this->line('Endpoint: '.config('sivera.url'));
 
         if (! $reporter->sendNow($events->build(new RuntimeException('SIVERA connection test')))) {
-            $this->error('Event delivery failed. Check URL, credential, signature, and network.');
+            $this->error('Event delivery failed: '.($reporter->lastError() ?? 'Unknown delivery failure.'));
 
             return self::FAILURE;
         }

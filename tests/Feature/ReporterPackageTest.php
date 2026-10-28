@@ -83,6 +83,74 @@ it('registers a test command that sends a synthetic event', function () {
     Http::assertSentCount(1);
 });
 
+it('explains invalid reporter configuration without sending a request', function (string $key, mixed $value, string $expected) {
+    Http::fake();
+    config()->set('sivera.'.$key, $value);
+    $this->app->register(SiveraServiceProvider::class);
+
+    expect(Artisan::call('sivera:test'))->toBe(1);
+    expect(Artisan::output())->toContain($expected)->not->toContain(config('sivera.secret') ?: 'unused-secret');
+    Http::assertNothingSent();
+})->with([
+    'disabled' => ['enabled', false, 'SIVERA_ENABLED=false'],
+    'missing URL' => ['url', null, 'SIVERA_URL must be an HTTPS base URL'],
+    'HTTP URL' => ['url', 'http://monitor.example.test', 'SIVERA_URL must be an HTTPS base URL'],
+    'missing app ID' => ['app_id', '', 'SIVERA_APP_ID is missing'],
+    'missing client ID' => ['client_id', null, 'SIVERA_CLIENT_ID is missing'],
+    'missing secret' => ['secret', '', 'SIVERA_SECRET is missing'],
+]);
+
+it('explains rejected HTTP responses without printing the response body or credentials', function (int $status, string $expected) {
+    $secret = config('sivera.secret');
+    $clientId = config('sivera.client_id');
+    Http::fake(['monitor.example.test/*' => Http::response(['error' => $secret, 'debug' => $clientId], $status)]);
+    $this->app->register(SiveraServiceProvider::class);
+
+    expect(Artisan::call('sivera:test'))->toBe(1);
+    expect(Artisan::output())->toContain('HTTP '.$status.':', $expected)->not->toContain($secret, $clientId);
+})->with([
+    'authentication' => [401, 'Authentication rejected'],
+    'forbidden' => [403, 'Access forbidden'],
+    'wrong endpoint' => [404, 'Ingestion endpoint not found'],
+    'payload size' => [413, '256 KiB'],
+    'environment mismatch' => [422, 'SIVERA_ENVIRONMENT'],
+    'rate limit' => [429, 'Rate limit exceeded'],
+    'server failure' => [500, 'SIVERA server or gateway error'],
+    'gateway failure' => [502, 'SIVERA server or gateway error'],
+    'unexpected success status' => [200, 'event delivery requires HTTP 202'],
+]);
+
+it('explains network failures without printing raw exception messages', function (string $message, string $expected) {
+    $secret = config('sivera.secret');
+    $clientId = config('sivera.client_id');
+    Http::fake(fn () => throw new ConnectionException($message.' '.$secret.' '.$clientId));
+    $this->app->register(SiveraServiceProvider::class);
+
+    expect(Artisan::call('sivera:test'))->toBe(1);
+    expect(Artisan::output())->toContain($expected)->not->toContain($secret, $clientId);
+})->with([
+    'DNS' => ['cURL error 6: unresolved host', 'Could not resolve the SIVERA hostname'],
+    'connection' => ['cURL error 7: refused', 'Could not connect to SIVERA'],
+    'timeout' => ['cURL error 28: timed out', 'SIVERA_CONNECT_TIMEOUT'],
+    'TLS handshake' => ['cURL error 35: handshake failed', 'TLS handshake failed'],
+    'certificate' => ['cURL error 60: certificate problem', 'TLS certificate verification failed'],
+    'other cURL failure' => ['cURL error 52: empty response', 'cURL error 52: No HTTP response received'],
+    'unknown network failure' => ['offline', 'Connection failed: No HTTP response received'],
+]);
+
+it('keeps unexpected delivery failures safe and clears the diagnostic after success', function () {
+    $reporter = new Reporter(new EventBuilder);
+    Http::fakeSequence()
+        ->pushResponse(fn () => throw new RuntimeException(config('sivera.secret')))
+        ->push(['accepted' => true], 202);
+
+    expect($reporter->sendNow(['event_id' => 'test']))->toBeFalse();
+    expect($reporter->lastError())->toContain('RuntimeException')->not->toContain(config('sivera.secret'));
+
+    expect($reporter->sendNow(['event_id' => 'test']))->toBeTrue();
+    expect($reporter->lastError())->toBeNull();
+});
+
 it('hooks Laravel exception reporting without suppressing normal logging', function () {
     Http::fake(['monitor.example.test/*' => Http::response(['accepted' => true], 202)]);
     $this->app->register(SiveraServiceProvider::class);

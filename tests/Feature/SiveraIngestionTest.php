@@ -3,6 +3,7 @@
 use App\Models\ApiRequestLog;
 use App\Models\Application;
 use App\Models\ApplicationCredential;
+use App\Models\EventReceipt;
 use App\Models\Issue;
 use App\Models\IssueOccurrence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,6 +53,45 @@ function sendEvent(TestCase $test, Application $application, ApplicationCredenti
 beforeEach(function () {
     $this->application = Application::factory()->create();
     $this->credential = ApplicationCredential::factory()->for($this->application)->create();
+});
+
+it('isolates duplicate event ids by application even when the issue changes', function () {
+    $otherApplication = Application::factory()->create();
+    $otherCredential = ApplicationCredential::factory()->for($otherApplication)->create();
+    $first = eventPayload($this->application);
+    $second = eventPayload($otherApplication);
+    $second['event_id'] = $first['event_id'];
+
+    sendEvent($this, $this->application, $this->credential, $first)->assertAccepted()->assertJsonPath('duplicate', false);
+    sendEvent($this, $otherApplication, $otherCredential, $second)->assertAccepted()->assertJsonPath('duplicate', false);
+    $second['exception']['line'] = 999;
+    sendEvent($this, $otherApplication, $otherCredential, $second)->assertAccepted()->assertJsonPath('duplicate', true);
+
+    expect(EventReceipt::count())->toBe(2)
+        ->and(IssueOccurrence::count())->toBe(2)
+        ->and(Issue::count())->toBe(2)
+        ->and(Issue::query()->sum('occurrence_count'))->toBe(2);
+});
+
+it('bounds unauthenticated request logs across source addresses', function () {
+    for ($attempt = 0; $attempt < 65; $attempt++) {
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.($attempt + 1)])
+            ->postJson('/api/v1/events', [])->assertUnauthorized();
+    }
+    expect(ApiRequestLog::count())->toBe(60);
+    sendEvent($this, $this->application, $this->credential, eventPayload($this->application))->assertAccepted();
+    expect(ApiRequestLog::count())->toBe(61);
+    $this->travel(61)->seconds();
+    $this->postJson('/api/v1/events', [])->assertUnauthorized();
+    expect(ApiRequestLog::count())->toBe(62);
+});
+
+it('throttles ingestion before signature processing and database logging', function () {
+    for ($attempt = 0; $attempt < 600; $attempt++) {
+        $this->postJson('/api/v1/events', [])->assertUnauthorized();
+    }
+    $this->postJson('/api/v1/events', [])->assertTooManyRequests()->assertHeader('Retry-After');
+    expect(ApiRequestLog::count())->toBe(60);
 });
 
 it('accepts signed events, groups issues, and keeps duplicate event ids idempotent', function () {

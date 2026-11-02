@@ -4,10 +4,12 @@ use App\Models\Application;
 use App\Models\ApplicationCredential;
 use App\Models\Issue;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use Mlp\SiveraReporter\EventBuilder;
 use Mlp\SiveraReporter\Jobs\SendEventJob;
 use Mlp\SiveraReporter\Reporter;
@@ -31,6 +33,23 @@ beforeEach(function () {
     config()->set('sivera.secret', str_repeat('s', 64));
     config()->set('sivera.environment', 'production');
     config()->set('sivera.transport', 'http');
+});
+
+it('omits SQL bindings and driver messages from database exceptions', function () {
+    $exception = new QueryException('test', 'insert into integrations (api_key) values (?)', ['dummy-private-key'], new RuntimeException('driver mentions dummy-private-key'));
+    $event = (new EventBuilder)->build($exception);
+
+    expect($event['exception']['message'])->toBe('Database query failed.')
+        ->and(json_encode($event))->not->toContain('dummy-private-key', 'insert into integrations');
+});
+
+it('captures route templates instead of secret URL segments', function () {
+    Route::get('/audit-reset/{token}', fn () => response()->json((new EventBuilder)->build(new RuntimeException('fixture'))));
+    (new ReflectionProperty($this->app, 'isRunningInConsole'))->setValue($this->app, false);
+
+    $this->get('/audit-reset/dummy-private-token')->assertOk()
+        ->assertJsonPath('request.path', '/audit-reset/{token}')
+        ->assertDontSee('dummy-private-token');
 });
 
 it('builds a minimal payload and signs its exact HTTP body', function () {

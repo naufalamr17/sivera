@@ -2,6 +2,7 @@
 
 namespace Mlp\SiveraReporter;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Throwable;
@@ -23,14 +24,14 @@ class EventBuilder
             'severity' => 'error',
             'exception' => [
                 'class' => $exception::class,
-                'message' => $this->clean($exception->getMessage()),
+                'message' => $exception instanceof QueryException ? 'Database query failed.' : $this->clean($exception->getMessage()),
                 'file' => $this->relativePath($exception->getFile()),
                 'line' => $exception->getLine(),
             ],
             'request' => [
                 'method' => $request?->method(),
                 'route' => $request?->route()?->getName(),
-                'path' => $request ? $this->clean('/'.$request->path()) : null,
+                'path' => $request?->route() ? '/'.ltrim($request->route()->uri(), '/') : null,
             ],
             'user' => $userId === null ? null : ['id' => $userId],
             'stack_trace' => array_map(fn (array $frame): array => [

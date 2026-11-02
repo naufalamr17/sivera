@@ -6,11 +6,26 @@ The dashboard shows date-filtered activity, application error rankings, and the 
 
 This repository implements the MVP described in [PRD_SIVERA.md](PRD_SIVERA.md). It does not provide application performance monitoring, distributed tracing, release tracking, or browser session replay.
 
+**Reporter package:** [naufalamr17/sivera-reporter on Packagist](https://packagist.org/packages/naufalamr17/sivera-reporter) · [Reporter source and guide](packages/sivera-reporter).
+
+## Documentation map
+
+- [Requirements](#requirements) and [local installation](#local-setup)
+- [Production installation and upgrades](#production-installation-and-upgrades)
+- [Server configuration](#server-configuration)
+- [Roles and issue workflow](#access-and-workflow)
+- [Reporter installation and connection checks](#install-the-reporter-in-another-laravel-application)
+- [Event API and signing](#event-api)
+- [Email, browser alerts, and retention](#notifications-and-retention)
+- [Dashboard calculations](#dashboard-date-filters-and-rankings)
+- [Security and privacy](#security-and-privacy)
+- [Project structure](#project-layout), [verification commands](#checks-and-useful-commands), and [troubleshooting](#troubleshooting)
+
 ## Requirements
 
 - PHP 8.3 with the extensions required by Laravel and the selected database driver
 - Composer
-- Node.js and npm for the Vite frontend build
+- Node.js 20.19+ within 20.x, or Node.js 22.12+ (the installed Vite 8 requirement), and npm for the frontend build
 - MySQL or MariaDB for the default configuration
 
 The application uses Laravel 13, Blade, React 19, shadcn/ui components with Radix primitives, Tailwind CSS 4, and Vite 8. React renders workspace navigation, the notification center, and the dashboard; management pages remain server-rendered Blade. Database-backed cache, sessions, and queues are configured in `.env.example`.
@@ -19,12 +34,12 @@ The shared SVG logo at `public/sivera-icon.svg` combines a browser window with a
 
 ## Local setup
 
-Run these commands from the repository root in PowerShell:
+From a new checkout, run these commands in the repository root in PowerShell. Preserve an existing `.env` instead of overwriting it:
 
 ```powershell
-composer install
-npm install
 Copy-Item .env.example .env
+composer install
+npm ci
 ```
 
 Create an empty MySQL database named `sivera`, or change `DB_DATABASE` in `.env` to the database you created. Set `DB_HOST`, `DB_PORT`, `DB_USERNAME`, and `DB_PASSWORD` for your local server. Then run:
@@ -62,6 +77,83 @@ The digest runs at **07:00 Asia/Jakarta** by default and covers the previous loc
 
 The daily email command sends synchronously and records delivery status; it does not need a queue worker. A source application using `SIVERA_TRANSPORT=queue` still needs its own `php artisan queue:work`.
 
+## Production installation and upgrades
+
+Serve the Laravel **`public/` directory** through your web server with trusted HTTPS. Keep `.env`, storage, vendor files, and repository metadata outside the public document root. The web server user needs write access to `storage/` and `bootstrap/cache/`. Use a dedicated database account with access to SIVERA's database. Prepare the database, SMTP transport, backups, and scheduled task before enabling ingestion.
+
+Set production values in the server's `.env`:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://sivera.example.com
+SESSION_SECURE_COOKIE=true
+CACHE_STORE=database
+SESSION_DRIVER=database
+MAIL_MAILER=smtp
+```
+
+Configure the remaining `DB_*` and `MAIL_*` values for your infrastructure. Set `TRUSTED_PROXIES` to the actual proxy addresses only when TLS terminates at a trusted reverse proxy. In multi-server installations, use the same database/cache, `APP_KEY`, and session configuration on every node; replay protection, rate limits, and digest locks must share state.
+
+For a first installation, install production PHP dependencies, generate `APP_KEY` once, migrate, and create an administrator:
+
+```powershell
+composer install --no-dev --optimize-autoloader
+php artisan key:generate
+php artisan migrate --force
+php artisan sivera:create-admin
+npm ci
+npm run build
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+Build assets on the server or a compatible build machine and deploy `public/build/`. Node.js is required for building, not for serving a completed build. Do not seed sample accounts in production. Keep the generated `APP_KEY` with your backups: replacing it makes existing encrypted credentials and sessions unreadable.
+
+For an upgrade:
+
+1. Back up the database and existing environment/key. Prepare the new code, Composer dependencies, and built assets.
+2. Put **all server nodes** into maintenance mode with `php artisan down`, and pause scheduled/long-running work. Do not mix old and new ingestion code during the event-ID migration.
+3. Deploy the prepared code and run the following from the SIVERA server root:
+
+   ```powershell
+   php artisan migrate --force
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:cache
+   php artisan up
+   ```
+
+4. Resume the scheduler. Verify `/health`, login, a new signed test event, and notification delivery history. Plan the maintenance window with source applications: reporter delivery failures are fail-safe and are not automatically retried indefinitely.
+
+The event-ID migration backfills `application_id` on receipts and sampled occurrences from their issue, keeps existing event IDs and timestamps, and replaces global uniqueness with `(application_id, event_id)` uniqueness. It supports retrying an interrupted backfill. Allow time for table/index changes on large databases; test the migration with a restored backup before a production upgrade.
+
+Rollback does not delete conflicting events. The migration refuses to restore global uniqueness if different applications already share an event ID. Keep the new schema and code in that case; prefer a forward fix. Do not run `migrate:rollback` as a general deployment recovery command. Restoring an older backup loses records collected since that backup, so coordinate any restore explicitly.
+
+Configure cron or Windows Task Scheduler to invoke `php artisan schedule:run` every minute, using the correct PHP executable, working directory, and service account. Do not run both an unmanaged `schedule:work` process and a separate scheduler unless that duplication is intentional. Check the effective schedules with `php artisan schedule:list`.
+
+## Server configuration
+
+These values belong to the **SIVERA server**. Reporter-specific `SIVERA_URL`, client ID, secret, and transport values belong to each monitored application instead.
+
+| Setting | Default / purpose |
+| --- | --- |
+| `APP_ENV`, `APP_DEBUG`, `APP_URL` | `local`, `true`, localhost in the example; use production, false, and the public HTTPS URL in deployment |
+| `APP_KEY` | Generated once; encrypts application credentials and cookies |
+| `DB_*` | MySQL/MariaDB connection; SQLite is used by automated tests |
+| `CACHE_STORE` | `database`; shared storage is required across nodes |
+| `SESSION_DRIVER`, `SESSION_LIFETIME` | `database`, 120 idle minutes |
+| `TRUSTED_PROXIES` | Optional comma-separated trusted proxy addresses |
+| `MAIL_*` | Mail transport, credentials, and sender; example `log` transport does not deliver email |
+| `SIVERA_TIMEZONE` | `Asia/Jakarta`; dashboard date boundaries and digest timezone |
+| `SIVERA_DIGEST_TIME` | `07:00` in `SIVERA_TIMEZONE` |
+| `SIVERA_POLL_SECONDS` | 5; constrained to 5–10 seconds |
+| `SIVERA_AUTO_REOPEN` | `true`; a new event reopens its resolved issue |
+| `SIVERA_RETENTION_YEARS` | 3 calendar years minimum |
+
+After changing environment settings, rebuild cached configuration with `php artisan config:cache` in deployment, or use `php artisan config:clear` locally. Restart long-running processes that need the new configuration. Never commit `.env` or credential secrets.
+
 ## Access and workflow
 
 | Area | Admin | Viewer |
@@ -74,7 +166,7 @@ The daily email command sends synchronously and records delivery status; it does
 
 Inactive users cannot access authenticated pages. The dashboard refreshes its summary every 5 seconds by default; `SIVERA_POLL_SECONDS` is limited to 5–10 seconds.
 
-Open **Account → Change password** in the sidebar or mobile navigation to update your own password. Supply the current password, a different new password of at least 12 characters, and its confirmation. Changes are hashed, audited without storing password values, and limited to five attempts per minute. The current session ID is regenerated after success; no email is sent for this action.
+Open **Account → Change password** in the sidebar or mobile navigation to update your own password. Supply the current password, a different new password of at least 12 characters, and its confirmation. Changes are hashed, audited without storing password values, and limited to five attempts per minute. The current session ID is regenerated after success and other sessions must sign in again. An administrator resetting a user's password also invalidates that user's existing sessions on their next protected request. No email is sent for this action.
 
 To connect an application:
 
@@ -84,7 +176,7 @@ To connect an application:
 4. Run `php artisan sivera:test` in the source application, then inspect the new issue in SIVERA.
 5. Use the issue page to review occurrences, status history, and comments. Admins can change severity or move an issue through its status workflow.
 
-The Issues page supports application, severity, status, exception class, route, date, and text filters. SIVERA groups related exceptions by application, exception class, file, line, and route. A repeated `event_id` is accepted without creating another occurrence. Resolved issues reopen on a new matching event when `SIVERA_AUTO_REOPEN=true`.
+The Issues page supports application, severity, status, exception class, route, date, and text filters. SIVERA groups related exceptions by application, exception class, file, line, and route. A repeated `event_id` within the same application is accepted without creating another occurrence, even if the repeated payload names a different issue. Different applications can use the same event ID independently. Resolved issues reopen on a new matching event when `SIVERA_AUTO_REOPEN=true`.
 
 ## Install the reporter in another Laravel application
 
@@ -201,7 +293,17 @@ POST
 <SHA-256 hex digest of the exact raw JSON body>
 ```
 
-Use the credential secret as the HMAC key. Timestamps must be within five minutes of server time, and a nonce cannot be reused for ten minutes. Active credentials, application status, optional IP allowlists, and per-application rate limits are also checked. Successful submissions return HTTP `202` with `accepted`, `duplicate`, and `event_id`; invalid authentication, oversized payloads, invalid data, and rate limits return `401`, `413`, `422`, and `429` respectively. Production API traffic requires HTTPS.
+Use the credential secret as the HMAC key. Timestamps must be within five minutes of server time, and a nonce cannot be reused for ten minutes. Active credentials, application status, optional IP allowlists, and per-credential rate limits are also checked. Production API traffic requires HTTPS.
+
+| HTTP status | Meaning |
+| --- | --- |
+| `202` | Accepted; JSON contains `accepted`, `duplicate`, and `event_id`. Duplicate detection is application-scoped. |
+| `401` | Missing/invalid signature, timestamp, replayed nonce, inactive identity, expired credential, disallowed IP, or insecure production API request |
+| `413` | Body exceeds 256 KiB |
+| `422` | Invalid JSON event shape or application/environment mismatch |
+| `429` | Credential limit or the outer limit of 600 ingestion requests per source IP per minute; inspect `Retry-After` |
+
+The outer rate limit runs before signature processing. Multiple applications behind one outbound IP share that outer budget; they retain their separate credential limits. Configure trusted proxies correctly so the server sees the source IP. Each event ID is a 1–64-character alphanumeric/hyphen string. Keep an event's ID stable when retrying delivery, but use a fresh nonce and signature for every HTTP attempt.
 
 ## Notifications and retention
 
@@ -241,7 +343,7 @@ php artisan sivera:send-digest --date=2026-10-26
 
 Omit `--date` for yesterday in `SIVERA_TIMEZONE`. Successful recipient/date pairs are skipped on repeat runs; failed attempts are recorded and can be retried using the same command. An application lock prevents overlapping runs. SMTP acceptance and the database log are separate operations: a process crash after SMTP acceptance can still cause a retry to duplicate delivery. Use the delivery history to investigate failures. Logs follow the retention policy, so avoid rerunning dates older than retained delivery history.
 
-Apply the new migrations before enabling this version: `php artisan migrate --force`. Deploy in maintenance mode while the activity backfill runs, then rebuild frontend assets and refresh configuration. The new activity table backfills receipt and status-history records in chunks without modifying their source data. Delivery logs gain a nullable user reference; historical rule-based logs remain available. Manual recipient management routes are retired, and legacy rules no longer control delivery. Old jobs without an active user recipient do not send.
+Apply pending migrations using the [upgrade procedure](#production-installation-and-upgrades). The activity migration backfills receipt and status-history records in chunks without modifying their source data. Delivery logs have a nullable user reference; historical rule-based logs remain available. Manual recipient management routes are retired, and legacy rules no longer control delivery. Old jobs without an active user recipient do not send.
 
 For rollback, the previous code can run with the additive tables/columns left in place. Rolling back the activity migration removes the activity stream; source receipts and status histories remain. Rolling back the user-recipient migration removes its user reference but keeps the legacy rule nullable to preserve delivery history. Do not roll back migrations merely to restart a worker.
 
@@ -271,29 +373,55 @@ Cleanup still runs **daily** and permanently deletes history **older than three 
 
 API request logs contain request metadata, not payloads or credential secrets. Event text is sanitized before storage, and application credential secrets are encrypted at rest. Rotated credentials have a 24-hour grace period unless revoked earlier.
 
+## Security and privacy
+
+- All workspace pages require an active authenticated user. Administrative writes require the Admin role. Viewers intentionally see monitoring data for every registered application; this is not a tenant-isolated customer portal.
+- Web forms use Laravel CSRF protection. Password changes rotate the current session ID; password-hash validation rejects other sessions after a password change or administrator reset. Deactivated users are rejected on their next request.
+- Ingestion verifies HMAC-SHA256 over the exact body, timestamp, path, and nonce. Nonce reservations and limits use the shared cache. Credentials are encrypted at rest, shown only when generated, checked on every request, and can be revoked immediately. Rotation allows a 24-hour grace period.
+- An outer 600-request/IP/minute limit protects signature processing. Requests that reach signature middleware with an invalid signature generate at most **60 database log entries per minute across the service**. Further invalid attempts in that window are not individually persisted. Valid-signature requests retain their logs and credential limits. Use gateway metrics for complete rejected-traffic counts; sampled API logs are not a complete failure ledger.
+- Blade and React render diagnostic text as escaped text. SQL filters use bound values. The API accepts bounded event fields, not arbitrary request bodies or stack-frame arguments.
+- The **bundled reporter source in this checkout** replaces `QueryException` messages with `Database query failed.` and captures route templates such as `/reset-password/{token}` instead of concrete token-bearing paths. Console and unmatched requests have no captured path. This prevents SQL bindings, driver messages, and URL parameters from entering those fields through the bundled builder.
+- Free-form exception messages can still contain sensitive information that pattern redaction does not recognize. Custom API clients must redact before sending. Keep secrets out of exception text, route names, and file names, and restrict dashboard access accordingly. Historical data is not scrubbed automatically by these source changes.
+
+Reporter changes in this repository do **not** update already-installed Packagist releases. Publish a new reporter release separately, then update each monitored application and restart its workers. To validate unreleased reporter changes, use the local path repository instructions above. Never claim a public release contains these changes until that release is published.
+
 ## Project layout
 
 ```text
 app/
-  Console/Commands/       # Admin creation, daily digest, retention cleanup
-  Http/Controllers/       # Dashboard, issue, application, user, and log pages
-  Http/Middleware/        # HTTPS, active-user, and API signature checks
-  Http/Requests/          # Input validation
-  Jobs/                   # Daily digest delivery (called synchronously)
-  Models/                 # Users, applications, issues, activity, and delivery logs
-  Services/Sivera/        # Event ingestion, date analytics, daily digest logic
-config/                   # Application and SIVERA settings
+  Console/Commands/        # Admin creation, email test, digest, retention cleanup
+  Http/Controllers/Api/V1/ # Signed event ingestion controller
+  Http/Controllers/        # Dashboard, issues, applications, users, and log pages
+  Http/Middleware/         # HTTPS, active-user, and signature checks
+  Http/Requests/           # Input validation and administrative authorization
+  Jobs/                    # Daily digest delivery (called synchronously)
+  Mail/                    # DailyDigestMail
+  Models/                  # Users, credentials, issues, receipts, activity, logs
+  Providers/               # Admin gate and ingestion ingress limiter
+  Services/Sivera/         # Event ingestion, date analytics, digest logic
+bootstrap/app.php          # Laravel routing and global middleware
+config/                    # Database, cache, session, mail, and SIVERA settings
 database/
-  factories/              # Test data builders
-  migrations/             # Schema changes
-  seeders/                # Local users and optional demo data
-packages/sivera-reporter/ # Composer package installed in source applications
-public/                   # Frontend assets and SIVERA icon
+  factories/               # Test data builders
+  migrations/              # Schema changes, backfills, event-ID namespace migration
+  seeders/                 # Local users and optional demo data
+packages/sivera-reporter/
+  config/sivera.php         # Reporter settings for monitored applications
+  src/Console/             # sivera:install and sivera:test
+  src/Jobs/                # Optional queued event delivery
+  src/EventBuilder.php     # Minimal exception payload and privacy filtering
+  src/Reporter.php         # HTTPS delivery and HMAC signing
+  composer.json            # Public package metadata and auto-discovery
+  README.md                # Reporter installation and maintenance guide
+public/                    # HTTP front controller, built assets, SIVERA icon
 resources/views/          # Blade management pages and email templates
 resources/js/             # React workspace/dashboard and shadcn/ui components
 resources/css/            # Shared neutral theme and management page styles
 routes/                    # Web, event API, and scheduled digest/cleanup routes
-tests/                    # Pest tests and Node notification state tests
+storage/                   # Runtime logs, cached views, local private files
+tests/Feature/             # API, session, migration, analytics, delivery regressions
+tests/Frontend/            # Node notification state tests
+.env.example               # Server environment template without secrets
 PRD_SIVERA.md              # Product requirements
 ```
 
@@ -314,3 +442,23 @@ php -d extension=pdo_sqlite -d extension=sqlite3 vendor/bin/pest --compact
 ```
 
 `GET /health` returns `{"status":"ok"}` and Laravel also exposes `GET /up` for health checks. If built frontend assets are missing, run `npm run build`.
+
+The focused security checks cover independent sessions after both password update paths, same event IDs across applications, database uniqueness, historical backfills, rollback refusal, ingress limits, rejected-log budgets, SQL exception privacy, and route-template capture. SQLite tests do not replace a migration rehearsal on a restored MySQL/MariaDB database.
+
+## Troubleshooting
+
+| Symptom | Check / action |
+| --- | --- |
+| Missing Vite manifest or stale UI | Run `npm ci` and `npm run build`; deploy `public/build/` with the matching code. Use `npm run dev` only for development. |
+| `could not find driver` | Enable the PHP extension for the selected database. Test runs need `pdo_sqlite` and `sqlite3`; runtime MySQL needs `pdo_mysql`. Confirm CLI and web PHP installations separately. |
+| Login fails or session expires after password update | Verify active state and credentials. Other sessions must sign in after any password reset. Check shared session storage, HTTPS cookies, and configuration cache. |
+| Production requests rejected despite HTTPS at proxy | Set only actual proxy addresses in `TRUSTED_PROXIES`; make the proxy send the correct scheme/client metadata. |
+| Reporter `401` | Check application slug/environment, active credential, secret, timestamp, IP allowlist, and HTTPS/proxy configuration. Do not reuse a nonce. |
+| Reporter `413` / `422` | Reduce payload size or fix the event shape/application identity; inspect the API contract above. |
+| Reporter `429` | Respect `Retry-After`. Check credential rate limit and shared outbound-IP ingress budget. |
+| Reporter `cURL error 28` | Check connectivity, then consider the documented source-app connection/total timeout overrides. |
+| No morning summary | Check `schedule:list`, scheduled PHP executable/working directory, timezone, active user email addresses, real `MAIL_*` transport, and delivery logs. Run the interactive email test separately. |
+| Missing failed-request log rows | Invalid-signature logs are capped at 60 per minute globally. Requests rejected by the outer throttle or global HTTPS middleware never reach signature logging. Use ingress metrics for totals. |
+| Migration rollback refuses global IDs | Different applications now share an event ID. Keep the application-scoped schema and use a forward fix; do not delete events to force rollback. |
+
+For recovery, preserve the database, `APP_KEY`, and configuration together. Investigate failures with metadata and dummy test events; do not paste real secrets or complete sensitive payloads into tickets.

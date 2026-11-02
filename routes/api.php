@@ -5,5 +5,5 @@ use App\Http\Middleware\VerifySiveraSignature;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/v1/events', [EventController::class, 'store'])
-    ->middleware(VerifySiveraSignature::class)
+    ->middleware(['throttle:sivera-ingress', VerifySiveraSignature::class])
     ->name('api.events.store');

@@ -21,7 +21,7 @@ class EventIngestionService
         return DB::transaction(function () use ($application, $event, $sourceIp): bool {
             Application::query()->whereKey($application->id)->lockForUpdate()->firstOrFail();
 
-            if (EventReceipt::query()->where('event_id', $event['event_id'])->exists()) {
+            if (EventReceipt::query()->where('application_id', $application->id)->where('event_id', $event['event_id'])->exists()) {
                 return true;
             }
 
@@ -79,6 +79,7 @@ class EventIngestionService
             }
 
             $receipt = EventReceipt::create([
+                'application_id' => $application->id,
                 'issue_id' => $issue->id,
                 'event_id' => $event['event_id'],
                 'occurred_at' => $event['occurred_at'],
@@ -103,6 +104,7 @@ class EventIngestionService
                 ], $event['stack_trace'] ?? []);
 
                 IssueOccurrence::create([
+                    'application_id' => $application->id,
                     'issue_id' => $issue->id,
                     'event_id' => $event['event_id'],
                     'stack_trace_json' => $frames,

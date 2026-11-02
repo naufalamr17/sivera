@@ -21,7 +21,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->name('login.store');
 });
 
-Route::middleware(['auth', EnsureActiveUser::class])->group(function () {
+Route::middleware(['auth', 'auth.session', EnsureActiveUser::class])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->middleware('throttle:5,1')->name('password.update');

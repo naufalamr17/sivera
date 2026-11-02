@@ -107,14 +107,16 @@ class VerifySiveraSignature
 
             throw $exception;
         } finally {
-            ApiRequestLog::create([
-                'application_id' => $applicationId,
-                'client_id' => is_string($clientId) ? substr($clientId, 0, 255) : null,
-                'source_ip' => $request->ip(),
-                'http_status' => $status,
-                'signature_valid' => $signatureValid,
-                'request_size' => strlen($body),
-            ]);
+            if ($signatureValid || RateLimiter::increment('sivera:rejected-logs', 60) <= 60) {
+                ApiRequestLog::create([
+                    'application_id' => $applicationId,
+                    'client_id' => is_string($clientId) ? substr($clientId, 0, 255) : null,
+                    'source_ip' => $request->ip(),
+                    'http_status' => $status,
+                    'signature_valid' => $signatureValid,
+                    'request_size' => strlen($body),
+                ]);
+            }
         }
     }
 

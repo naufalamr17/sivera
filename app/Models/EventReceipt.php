@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['issue_id', 'event_id', 'occurred_at'])]
+#[Fillable(['application_id', 'issue_id', 'event_id', 'occurred_at'])]
 class EventReceipt extends Model
 {
     use HasFactory;

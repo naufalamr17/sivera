@@ -3,9 +3,52 @@
 use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
+
+it('revokes another session after a password change while keeping the changing session', function () {
+    $user = User::factory()->create();
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])->assertRedirect();
+    $otherSession = session()->all();
+
+    $this->put(route('password.update'), [
+        'current_password' => 'password',
+        'password' => 'new-safe-password-123',
+        'password_confirmation' => 'new-safe-password-123',
+    ])->assertSessionHasNoErrors();
+    Auth::forgetGuards();
+    $this->get(route('dashboard'))->assertOk();
+
+    session()->flush();
+    Auth::forgetGuards();
+    $this->withSession($otherSession)->get(route('dashboard'))->assertRedirect(route('login'));
+    $this->assertGuest();
+});
+
+it('revokes existing target sessions after an administrator resets the password', function () {
+    $user = User::factory()->create();
+    $admin = User::factory()->admin()->create();
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])->assertRedirect();
+    $oldSession = session()->all();
+    session()->flush();
+    Auth::forgetGuards();
+    $this->post(route('login.store'), ['email' => $admin->email, 'password' => 'password'])->assertRedirect();
+    $this->put(route('users.update', $user), [
+        'name' => $user->name,
+        'email' => $user->email,
+        'role' => $user->role,
+        'is_active' => true,
+        'password' => 'admin-reset-password-123',
+        'password_confirmation' => 'admin-reset-password-123',
+    ])->assertSessionHasNoErrors();
+
+    session()->flush();
+    Auth::forgetGuards();
+    $this->withSession($oldSession)->get(route('dashboard'))->assertRedirect(route('login'));
+    $this->assertGuest();
+});
 
 it('lets admins and viewers change only their own password', function (string $role) {
     $user = User::factory()->create(['role' => $role]);

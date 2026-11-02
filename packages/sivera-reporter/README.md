@@ -4,6 +4,8 @@
 
 The monitoring dashboard and ingestion API are maintained in the [SIVERA server repository](https://github.com/naufalamr17/sivera).
 
+Public package: [naufalamr17/sivera-reporter on Packagist](https://packagist.org/packages/naufalamr17/sivera-reporter). The server's [main guide](https://github.com/naufalamr17/sivera#readme) covers installation, roles, API signing, operations, and project structure.
+
 ## Requirements
 
 - A Laravel application. The package allows Laravel 10–13; automated integration tests currently run on Laravel 13.
@@ -12,7 +14,7 @@ The monitoring dashboard and ingestion API are maintained in the [SIVERA server 
 
 ## Installation
 
-After the package has been published on Packagist, run these commands from the application you want to monitor:
+Run these commands from the application you want to monitor:
 
 ```shell
 composer require naufalamr17/sivera-reporter:^0.1
@@ -68,8 +70,51 @@ Set `SIVERA_TRANSPORT=queue` only when the monitored application already has a q
 - Requests use HMAC-SHA256 signatures, timestamps, and fresh nonces.
 - Request bodies, headers, cookies, session data, and stack-frame arguments are not collected.
 - User context contains only the authenticated user ID when `capture_user` is enabled.
-- Known sensitive assignments in exception text are redacted, including password, token, secret, authorization, cookie, session, and API-key names. Free-form exception messages and URL paths can still contain personal information; do not put secrets in exception messages or URL segments.
+- Database `QueryException` messages become `Database query failed.`; SQL bindings and database driver messages are not sent by the event builder.
+- HTTP paths use route templates, such as `/reset-password/{token}`, instead of actual URL parameter values. Unmatched requests and console events have no captured path.
+- Known sensitive assignments in other exception text are redacted, including password, token, secret, authorization, cookie, session, and API-key names. Arbitrary free-form text may still contain secrets or personal information. Do not put secrets in exception messages, route names, or file names. Callers using `Reporter::send()` directly must supply a safe payload themselves.
 - File paths are normalized and stack traces contain at most 50 frames.
+
+These privacy changes describe the bundled source in this checkout. They require a new package release before applications installed from Packagist receive them. Updating this repository does not publish a release or scrub historical events. Use the server guide's local path repository instructions to test unreleased changes.
+
+## Configuration reference
+
+| Setting | Default / meaning |
+| --- | --- |
+| `SIVERA_ENABLED` | `true`; disable outbound reports with `false` |
+| `SIVERA_URL` | Required HTTPS base URL without `/api/v1/events` |
+| `SIVERA_APP_ID` | Registered application slug |
+| `SIVERA_CLIENT_ID`, `SIVERA_SECRET` | Generated credential identity and signing secret |
+| `SIVERA_ENVIRONMENT` | `production`; must match the registered application |
+| `SIVERA_TRANSPORT` | `http`; use `queue` only with an existing queue worker |
+| `SIVERA_CONNECT_TIMEOUT`, `SIVERA_TIMEOUT` | 0.5 and 2 seconds; larger values can delay exception handling |
+| `capture_user` in `config/sivera.php` | `true`; set false to omit the user reference |
+
+Request-body capture is not implemented; changing `capture_request_body` does not enable it. Each job has one attempt. Delivery failures do not interrupt the monitored application and are not a durable outage buffer.
+
+## Delivery and maintenance
+
+- Run `php artisan sivera:test` after installation, credential changes, or upgrades. Inspect SIVERA for the synthetic issue, not just terminal success.
+- For `401`, check the HTTPS endpoint, clock, application/environment, credential status, secret, and allowlist. For `429`, respect `Retry-After`; the server also applies a shared source-IP ingress limit.
+- Keep the same event ID when retrying a custom event, but generate a fresh nonce/signature per HTTP request. IDs are deduplicated within the registered application.
+- During rotation, deploy the replacement client ID/secret to the source application, reload configuration, and test before revoking the previous credential. The server normally permits a 24-hour rotation grace period.
+- After changing environment values, rebuild cached configuration where used and restart existing queue workers. Do not print secrets or copy real exception data into connection diagnostics.
+
+## Package structure
+
+```text
+config/sivera.php          # Published reporter configuration
+src/SiveraServiceProvider.php # Auto-discovery and exception-reporting hook
+src/EventBuilder.php      # Minimal event, privacy filtering, normalized frames
+src/Reporter.php          # HTTP delivery, HMAC signatures, safe diagnostics
+src/Jobs/SendEventJob.php  # Optional queue delivery, one attempt
+src/Console/InstallCommand.php # Configuration publishing
+src/Console/TestConnectionCommand.php # Synthetic delivery check
+composer.json             # Requirements and Composer/Laravel integration
+LICENSE                   # MIT license
+```
+
+The SIVERA repository's `tests/Feature/ReporterPackageTest.php` covers this bundled source. Compatibility with every allowed Laravel major must be checked in its target application.
 
 ## Updates
 

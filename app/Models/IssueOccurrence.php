@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['issue_id', 'event_id', 'stack_trace_json', 'request_metadata_json', 'user_reference', 'source_ip', 'occurred_at'])]
+#[Fillable(['application_id', 'issue_id', 'event_id', 'stack_trace_json', 'request_metadata_json', 'user_reference', 'source_ip', 'occurred_at'])]
 class IssueOccurrence extends Model
 {
     use HasFactory;

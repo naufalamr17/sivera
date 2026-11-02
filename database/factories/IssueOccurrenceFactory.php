@@ -21,6 +21,7 @@ class IssueOccurrenceFactory extends Factory
     {
         return [
             'issue_id' => Issue::factory(),
+            'application_id' => fn (array $attributes): int => Issue::query()->findOrFail($attributes['issue_id'])->application_id,
             'event_id' => (string) Str::ulid(),
             'stack_trace_json' => [],
             'request_metadata_json' => [],

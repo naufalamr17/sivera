@@ -75,7 +75,7 @@ Set `SIVERA_TRANSPORT=queue` only when the monitored application already has a q
 - Known sensitive assignments in other exception text are redacted, including password, token, secret, authorization, cookie, session, and API-key names. Arbitrary free-form text may still contain secrets or personal information. Do not put secrets in exception messages, route names, or file names. Callers using `Reporter::send()` directly must supply a safe payload themselves.
 - File paths are normalized and stack traces contain at most 50 frames.
 
-These privacy changes describe the bundled source in this checkout. They require a new package release before applications installed from Packagist receive them. Updating this repository does not publish a release or scrub historical events. Use the server guide's local path repository instructions to test unreleased changes.
+The SQL-message and route-template protections require v0.1.2 or later. Updating package source does not update installed applications or scrub historical events. Update the package in each monitored application and restart existing long-running workers. Use the server guide's local path repository instructions to test unreleased changes.
 
 ## Configuration reference
 

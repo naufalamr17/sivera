@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendIssueAlertEmailJob;
 use App\Models\ApiRequestLog;
 use App\Models\Application;
 use App\Models\AuditLog;
@@ -14,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -43,6 +45,7 @@ it('samples detail after 100 events while preserving counts and idempotency', fu
 });
 
 it('retains every data category for three calendar years including leap day boundaries', function () {
+    Queue::fake([SendIssueAlertEmailJob::class]);
     $this->travelTo(CarbonImmutable::parse('2028-02-29T12:00:00Z'));
     expect(config('sivera.retention_years'))->toBe(3);
     $issue = Issue::factory()->create();

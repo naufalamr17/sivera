@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\SendIssueAlertEmailJob;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,15 @@ class IssueAlert extends Model
     use HasFactory;
 
     public $timestamps = false;
+
+    protected static function booted(): void
+    {
+        static::created(function (IssueAlert $alert): void {
+            if (in_array($alert->type, ['event', 'status_changed'], true)) {
+                SendIssueAlertEmailJob::dispatch($alert->id)->afterCommit();
+            }
+        });
+    }
 
     public function issue(): BelongsTo
     {

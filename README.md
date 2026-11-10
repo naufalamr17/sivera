@@ -2,7 +2,7 @@
 
 **Smart Integrated Visibility & Event Response Application** is an internal Laravel application for collecting exceptions from other Laravel applications, grouping repeated errors into issues, and managing incident response in one place.
 
-The dashboard shows date-filtered activity, application error rankings, and the most frequent exceptions with their reported messages. Operators can inspect stack traces, update issue status and severity, receive live in-app/browser alerts, and receive one email summary each morning. The bundled reporter package sends exceptions without changing the source application's existing Laravel logging.
+The dashboard shows date-filtered activity, application error rankings, and the most frequent exceptions with their reported messages. Operators can inspect stack traces, update issue status and severity, receive live in-app/browser alerts and realtime emails, and receive one email summary each morning. The bundled reporter package sends exceptions without changing the source application's existing Laravel logging.
 
 This repository implements the MVP described in [PRD_SIVERA.md](PRD_SIVERA.md). It does not provide application performance monitoring, distributed tracing, release tracking, or browser session replay.
 
@@ -75,11 +75,19 @@ php artisan schedule:work
 
 The digest runs at **07:00 Asia/Jakarta** by default and covers the previous local calendar day. Configure `SIVERA_DIGEST_TIME` and `SIVERA_TIMEZONE` to change this. Cleanup runs at 00:30 in the application's timezone (UTC by default). In deployment, invoke `php artisan schedule:run` every minute using cron or Windows Task Scheduler. Keep the machine/server running when scheduled work is due.
 
-The daily email command sends synchronously and records delivery status; it does not need a queue worker. A source application using `SIVERA_TRANSPORT=queue` still needs its own `php artisan queue:work`.
+Run a queue worker in a separate terminal for realtime emails from the **SIVERA server**:
+
+```powershell
+php artisan queue:work --sleep=1 --tries=3
+```
+
+Use `QUEUE_CONNECTION=database` (the example default) to process realtime emails in the background after issue activity commits. Keep the worker running; queued emails wait while it is stopped. Delivery timing depends on the queue backlog and mail server.
+
+The daily email command sends synchronously and records delivery status; it does not need a queue worker. A source application using `SIVERA_TRANSPORT=queue` separately needs its own `php artisan queue:work` to send events to SIVERA.
 
 ## Production installation and upgrades
 
-Serve the Laravel **`public/` directory** through your web server with trusted HTTPS. Keep `.env`, storage, vendor files, and repository metadata outside the public document root. The web server user needs write access to `storage/` and `bootstrap/cache/`. Use a dedicated database account with access to SIVERA's database. Prepare the database, SMTP transport, backups, and scheduled task before enabling ingestion.
+Serve the Laravel **`public/` directory** through your web server with trusted HTTPS. Keep `.env`, storage, vendor files, and repository metadata outside the public document root. The web server user needs write access to `storage/` and `bootstrap/cache/`. Use a dedicated database account with access to SIVERA's database. Prepare the database, SMTP transport, backups, scheduled task, and queue worker before enabling ingestion.
 
 Set production values in the server's `.env`:
 
@@ -90,6 +98,7 @@ APP_URL=https://sivera.example.com
 SESSION_SECURE_COOKIE=true
 CACHE_STORE=database
 SESSION_DRIVER=database
+QUEUE_CONNECTION=database
 MAIL_MAILER=smtp
 ```
 
@@ -125,13 +134,15 @@ For an upgrade:
    php artisan up
    ```
 
-4. Resume the scheduler. Verify `/health`, login, a new signed test event, and notification delivery history. Plan the maintenance window with source applications: reporter delivery failures are fail-safe and are not automatically retried indefinitely.
+4. Resume the scheduler and SIVERA queue workers. Run `php artisan queue:restart` so existing workers reload the deployed code and configuration; the process manager must start them again after they exit. Verify `/health`, login, a new signed test event, and realtime email delivery history. Plan the maintenance window with source applications: reporter delivery failures are fail-safe and are not automatically retried indefinitely.
 
 The event-ID migration backfills `application_id` on receipts and sampled occurrences from their issue, keeps existing event IDs and timestamps, and replaces global uniqueness with `(application_id, event_id)` uniqueness. It supports retrying an interrupted backfill. Allow time for table/index changes on large databases; test the migration with a restored backup before a production upgrade.
 
 Rollback does not delete conflicting events. The migration refuses to restore global uniqueness if different applications already share an event ID. Keep the new schema and code in that case; prefer a forward fix. Do not run `migrate:rollback` as a general deployment recovery command. Restoring an older backup loses records collected since that backup, so coordinate any restore explicitly.
 
 Configure cron or Windows Task Scheduler to invoke `php artisan schedule:run` every minute, using the correct PHP executable, working directory, and service account. Do not run both an unmanaged `schedule:work` process and a separate scheduler unless that duplication is intentional. Check the effective schedules with `php artisan schedule:list`.
+
+Keep `php artisan queue:work --sleep=1 --tries=3` running under a process manager such as Supervisor or a Windows service that restarts it after failure or `queue:restart`. This worker delivers realtime emails independently of the daily scheduler.
 
 ## Server configuration
 
@@ -143,6 +154,7 @@ These values belong to the **SIVERA server**. Reporter-specific `SIVERA_URL`, cl
 | `APP_KEY` | Generated once; encrypts application credentials and cookies |
 | `DB_*` | MySQL/MariaDB connection; SQLite is used by automated tests |
 | `CACHE_STORE` | `database`; shared storage is required across nodes |
+| `QUEUE_CONNECTION` | `database`; realtime email delivery requires a running SIVERA queue worker |
 | `SESSION_DRIVER`, `SESSION_LIFETIME` | `database`, 120 idle minutes |
 | `TRUSTED_PROXIES` | Optional comma-separated trusted proxy addresses |
 | `MAIL_*` | Mail transport, credentials, and sender; example `log` transport does not deliver email |
@@ -252,7 +264,7 @@ Run `php artisan sivera:test` in the source application to send a synthetic exce
 
 7. Open **Issues** in SIVERA and verify the synthetic `SIVERA connection test` issue, application, occurrence, and stack trace. Laravel exceptions are then reported automatically; controller and business-logic changes are not required. Existing Laravel logging continues to operate.
 
-Every active SIVERA user automatically receives the daily email summary. Manage names, addresses, and active state under **Users**; **Notifications** displays the active user recipients and delivery history. WhatsApp delivery has been removed.
+Every active SIVERA user automatically receives realtime emails for error events and status changes, plus the daily email summary. Manage names, addresses, and active state under **Users**; **Notifications** displays the active user recipients and delivery history. WhatsApp delivery has been removed.
 
 If the test fails, check the HTTPS URL and certificate, outbound network access, application slug, registered environment, client ID, secret, and server clock. A `401` indicates an authentication or security check failed; `422` indicates an invalid payload; `429` indicates the configured rate limit. The package manifest allows Laravel 10–13, but installation and delivery must still be checked in each target application.
 
@@ -307,13 +319,25 @@ The outer rate limit runs before signature processing. Multiple applications beh
 
 ## Notifications and retention
 
-Every **active Admin and Viewer** receives the daily summary automatically at **07:00 WIB (Asia/Jakarta)** by default. No separate recipient rule is required. Inactive users and legacy external recipient rules are excluded; duplicate email addresses receive one copy per date. **Notifications** lists the active users and delivery history. User email addresses and account state are managed under **Users**.
+Every **active Admin and Viewer** receives realtime emails for error events and status changes, plus the daily summary at **07:00 WIB (Asia/Jakarta)** by default. No separate recipient rule is required. Inactive users and legacy external recipient rules are excluded. Email addresses are normalized and deduplicated per activity for realtime delivery and per date for the daily summary. **Notifications** lists the active users and delivery history. User email addresses and account state are managed under **Users**.
 
-The email always covers the previous local calendar day, including days with zero events. It includes event counts, active/critical/resolved/ignored issue counts, top-five ERROR/CRITICAL application and issue rankings, and up to 20 status changes during that day. **RESOLVED and IGNORED are included in the summary and in live status-change notifications.** There are no per-event emails.
+The daily summary always covers the previous local calendar day, including days with zero events. It includes event counts, active/critical/resolved/ignored issue counts, top-five ERROR/CRITICAL application and issue rankings, and up to 20 status changes during that day. **RESOLVED and IGNORED are included in the summary and in realtime status-change emails.**
 
 A separate **Daily follow-up** section lists issues whose current status is neither RESOLVED nor IGNORED, including older issues without events yesterday. The email displays up to 20 pending issues and links to the **All active statuses** issue filter for the complete paginated list. Each scheduled daily run also creates one in-app follow-up per outstanding issue per local day. Repeated runs cannot duplicate that day's follow-up.
 
 Email uses Laravel's `MAIL_*` settings. Configure `MAIL_MAILER=smtp` (or another real transport), the SMTP credentials, and a valid sender. The `log` and `array` transports do not deliver external email. `MAIL_FROM_ADDRESS` is the sender; the recipients are active user accounts.
+
+### Realtime email delivery
+
+Each accepted error event and each status change queues an email job after its database transaction commits. This includes automatic reopening and changes to RESOLVED or IGNORED. Repeated events for the same issue each generate an email, even when the browser groups them together; resubmitting the same event ID for the same application does not create another alert. Daily follow-ups remain in the morning summary rather than generating separate realtime emails.
+
+Recipients are selected from the current active users when the worker processes the activity. Each email includes the application, exception class, reported message excerpt, severity, status, activity time, and an issue link in HTML and plain text. Status-change emails preserve the recorded transition; other issue details reflect their values when processed. Email delivery does not require the recipient to keep SIVERA open.
+
+Apply migrations before starting the [SIVERA queue worker](#background-processes). The realtime email migration adds nullable activity and recipient fields to delivery logs and leaves existing digest and legacy records intact. Existing historical activity is not emailed by this migration. Restart workers after deploying code or mail configuration changes.
+
+The job allows up to **three attempts**, with retry delays of **10 and 60 seconds**. Delivery logs record each attempted recipient as pending, sent, or failed. Retries skip recipients already marked sent, and overlapping jobs for the same activity are serialized. After fixing a persistent failure, inspect `php artisan queue:failed` and retry the selected job with `php artisan queue:retry <job-id>`.
+
+A sent log means the mailer accepted the email, not that it reached the inbox. SMTP acceptance and the database log are separate operations: a crash after acceptance but before the log update can still duplicate an email on retry.
 
 ### Test email from the terminal
 
@@ -343,7 +367,7 @@ php artisan sivera:send-digest --date=2026-10-26
 
 Omit `--date` for yesterday in `SIVERA_TIMEZONE`. Successful recipient/date pairs are skipped on repeat runs; failed attempts are recorded and can be retried using the same command. An application lock prevents overlapping runs. SMTP acceptance and the database log are separate operations: a process crash after SMTP acceptance can still cause a retry to duplicate delivery. Use the delivery history to investigate failures. Logs follow the retention policy, so avoid rerunning dates older than retained delivery history.
 
-Apply pending migrations using the [upgrade procedure](#production-installation-and-upgrades). The activity migration backfills receipt and status-history records in chunks without modifying their source data. Delivery logs have a nullable user reference; historical rule-based logs remain available. Manual recipient management routes are retired, and legacy rules no longer control delivery. Old jobs without an active user recipient do not send.
+Apply pending migrations using the [upgrade procedure](#production-installation-and-upgrades). The activity migration backfills receipt and status-history records in chunks without modifying their source data. Delivery logs have a nullable user reference; historical rule-based logs remain available. Manual recipient management routes are retired, and legacy rules no longer control delivery. Legacy rule-based jobs do not send.
 
 For rollback, the previous code can run with the additive tables/columns left in place. Rolling back the activity migration removes the activity stream; source receipts and status histories remain. Rolling back the user-recipient migration removes its user reference but keeps the legacy rule nullable to preserve delivery history. Do not roll back migrations merely to restart a worker.
 
@@ -394,8 +418,8 @@ app/
   Http/Controllers/        # Dashboard, issues, applications, users, and log pages
   Http/Middleware/         # HTTPS, active-user, and signature checks
   Http/Requests/           # Input validation and administrative authorization
-  Jobs/                    # Daily digest delivery (called synchronously)
-  Mail/                    # DailyDigestMail
+  Jobs/                    # Queued realtime email and synchronous digest delivery
+  Mail/                    # IssueAlertMail and DailyDigestMail
   Models/                  # Users, credentials, issues, receipts, activity, logs
   Providers/               # Admin gate and ingestion ingress limiter
   Services/Sivera/         # Event ingestion, date analytics, digest logic
@@ -457,6 +481,7 @@ The focused security checks cover independent sessions after both password updat
 | Reporter `413` / `422` | Reduce payload size or fix the event shape/application identity; inspect the API contract above. |
 | Reporter `429` | Respect `Retry-After`. Check credential rate limit and shared outbound-IP ingress budget. |
 | Reporter `cURL error 28` | Check connectivity, then consider the documented source-app connection/total timeout overrides. |
+| No realtime email | Apply pending migrations, use `QUEUE_CONNECTION=database`, and keep the SIVERA queue worker running. Check current active user addresses, real `MAIL_*` transport, delivery history, and `queue:failed`. Restart workers after code/configuration changes. The scheduler alone does not deliver realtime emails. |
 | No morning summary | Check `schedule:list`, scheduled PHP executable/working directory, timezone, active user email addresses, real `MAIL_*` transport, and delivery logs. Run the interactive email test separately. |
 | Missing failed-request log rows | Invalid-signature logs are capped at 60 per minute globally. Requests rejected by the outer throttle or global HTTPS middleware never reach signature logging. Use ingress metrics for totals. |
 | Migration rollback refuses global IDs | Different applications now share an event ID. Keep the application-scoped schema and use a forward fix; do not delete events to force rollback. |

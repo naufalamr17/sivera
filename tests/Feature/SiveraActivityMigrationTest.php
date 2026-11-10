@@ -10,6 +10,8 @@ use Illuminate\Foundation\Testing\DatabaseMigrations;
 uses(DatabaseMigrations::class);
 
 it('backfills existing receipt notifications without changing source data', function () {
+    $realtimeMigration = require database_path('migrations/2026_11_09_071514_add_realtime_email_fields_to_notification_logs_table.php');
+    $realtimeMigration->down();
     $migration = require database_path('migrations/2026_10_28_020823_create_issue_alerts_table.php');
     $migration->down();
     $receipts = EventReceipt::factory()->count(3)->create();
@@ -17,6 +19,7 @@ it('backfills existing receipt notifications without changing source data', func
     $log = NotificationLog::factory()->create(['status' => 'sent']);
     $migration->up();
     $migration->up();
+    $realtimeMigration->up();
 
     expect(IssueAlert::query()->where('type', 'event')->count())->toBe(3)
         ->and(IssueAlert::query()->where('type', 'event')->orderBy('event_receipt_id')->pluck('event_receipt_id')->all())->toBe($receipts->pluck('id')->all())

@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendIssueAlertEmailJob;
 use App\Jobs\SendNotificationJob;
 use App\Mail\DailyDigestMail;
 use App\Models\Application;
@@ -14,11 +15,16 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
-it('notifies all users of status changes including resolved and ignored without sending per change emails', function (string $status) {
+beforeEach(function () {
+    Queue::fake([SendIssueAlertEmailJob::class]);
+});
+
+it('notifies all users of status changes including resolved and ignored and queues one email job', function (string $status) {
     Mail::fake();
     $admin = User::factory()->admin()->create();
     $viewer = User::factory()->create();
@@ -31,6 +37,7 @@ it('notifies all users of status changes including resolved and ignored without 
             ->assertJsonPath('events.0.type', 'status_changed')->assertJsonPath('events.0.status', $status);
     }
     Mail::assertNothingSent();
+    Queue::assertPushed(SendIssueAlertEmailJob::class, 1);
 })->with(['ACKNOWLEDGED', 'INVESTIGATING', 'RESOLVED', 'IGNORED', 'REOPENED']);
 
 it('always emails yesterday summary and creates one daily follow up only for outstanding issues', function () {

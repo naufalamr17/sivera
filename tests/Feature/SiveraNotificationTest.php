@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendIssueAlertEmailJob;
 use App\Jobs\SendNotificationJob;
 use App\Mail\DailyDigestMail;
 use App\Models\Application;
@@ -14,11 +15,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
-it('ingests bursts without sending per event email and keeps live activity available', function () {
+beforeEach(function () {
+    Queue::fake([SendIssueAlertEmailJob::class]);
+});
+
+it('queues event emails during bursts and keeps live activity available without inline delivery', function () {
     Mail::fake();
     Bus::fake();
     $application = Application::factory()->create();
@@ -37,7 +43,7 @@ it('ingests bursts without sending per event email and keeps live activity avail
     expect(Issue::count())->toBe(1)->and(Issue::first()->occurrence_count)->toBe(50)
         ->and(EventReceipt::count())->toBe(50)->and(NotificationLog::count())->toBe(0);
     Mail::assertNothingSent();
-    Bus::assertNothingDispatched();
+    Bus::assertDispatched(SendIssueAlertEmailJob::class, 50);
     $this->actingAs(User::factory()->create())->getJson(route('notifications.feed'))
         ->assertOk()->assertJsonCount(20, 'events')->assertJsonPath('cursor', 50);
 });

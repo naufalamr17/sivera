@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="{{ asset('theme.js').'?v=2' }}"></script>
     <title>Login · SIVERA</title>
-    <link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=2' }}">
+    <link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=3' }}">
     @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="login-page">
 <div id="auth-theme-toggle" class="auth-theme-toggle"></div>
 <main class="login-card">
-    <div class="login-brand"><img class="brand-mark" src="{{ asset('sivera-icon.svg').'?v=2' }}" alt="" width="38" height="38"><span><strong>SIVERA</strong><small>APPLICATION MONITORING</small></span></div>
+    <div class="login-brand"><img class="brand-mark" src="{{ asset('sivera-icon.svg').'?v=3' }}" alt="" width="38" height="38"><span><strong>SIVERA</strong><small>APPLICATION MONITORING</small></span></div>
     <span class="eyebrow">SECURE ACCESS</span>
     <h1>Welcome back.</h1>
     <p>Sign in to monitor and resolve issues across internal applications.</p>

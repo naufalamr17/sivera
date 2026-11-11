@@ -1,11 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
-  <title id="title">SIVERA web application analytics</title>
-  <rect width="64" height="64" rx="15" fill="#18181b"/>
-  <rect x="11" y="12" width="42" height="40" rx="5" fill="none" stroke="#fafafa" stroke-width="3"/>
-  <path d="M12 24h40" stroke="#fafafa" stroke-width="3"/>
-  <circle cx="18" cy="18" r="1.5" fill="#fafafa"/>
-  <circle cx="24" cy="18" r="1.5" fill="#fafafa"/>
-  <rect x="19" y="36" width="6" height="9" rx="1.5" fill="#5eead4"/>
-  <rect x="29" y="31" width="6" height="14" rx="1.5" fill="#5eead4"/>
-  <rect x="39" y="27" width="6" height="18" rx="1.5" fill="#5eead4"/>
+  <title id="title">SIVERA event monitoring and response</title>
+  <rect width="64" height="64" rx="15" fill="#21132f"/>
+  <path d="M41 14H26L14 26L50 38L38 50H20" fill="none" stroke="#ff4fbc" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="52" cy="14" r="4" fill="#c3ff4d"/>
 </svg>

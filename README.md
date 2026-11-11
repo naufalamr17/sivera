@@ -30,7 +30,7 @@ This repository implements the MVP described in [PRD_SIVERA.md](PRD_SIVERA.md). 
 
 The application uses Laravel 13, Blade, React 19, shadcn/ui components with Radix primitives, Tailwind CSS 4, and Vite 8. React renders workspace navigation, the notification center, and the dashboard; management pages remain server-rendered Blade. Database-backed cache, sessions, and queues are configured in `.env.example`.
 
-The shared SVG logo at `public/sivera-icon.svg` combines a browser window with an ascending bar chart to represent web application monitoring and analytics. The login page, workspace navigation, favicon, and browser notification icon reuse this asset.
+The shared SVG logo at `public/sivera-icon.svg` uses a single angular S-shaped event flow and a neon green status dot to represent SIVERA's monitoring and response functions. The login page, workspace navigation, favicon, and browser notification icon reuse this asset.
 
 ## Local setup
 

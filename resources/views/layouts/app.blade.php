@@ -6,7 +6,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="{{ asset('theme.js').'?v=2' }}"></script>
 <title>@yield('title', 'Dashboard') · SIVERA</title>
-<link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=2' }}">
+<link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=3' }}">
 @viteReactRefresh
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -34,7 +34,7 @@ $workspace = [
     'dashboard' => route('dashboard'),
     'feed' => route('notifications.feed'),
     'pollSeconds' => config('sivera.poll_seconds'),
-    'icon' => asset('sivera-icon.svg').'?v=2',
+    'icon' => asset('sivera-icon.svg').'?v=3',
 ];
 @endphp
 <script type="application/json" id="workspace-data">@json($workspace)</script>

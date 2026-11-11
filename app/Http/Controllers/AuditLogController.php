@@ -9,6 +9,6 @@ class AuditLogController extends Controller
 {
     public function index(): View
     {
-        return view('audit.index', ['logs' => AuditLog::query()->latest('id')->paginate(50)]);
+        return view('audit.index', ['logs' => AuditLog::query()->with('user:id,name')->latest('id')->paginate(50)]);
     }
 }

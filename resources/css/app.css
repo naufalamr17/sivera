@@ -295,6 +295,12 @@ label small { color: var(--muted-foreground); font-weight: 400; }
 .timeline p { margin: 8px 0; color: var(--muted-foreground); }
 .empty { padding: 36px 20px; color: var(--muted-foreground); text-align: center; }
 .pagination { margin: 20px 0; }
+.pagination p { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.pagination .border { background: var(--card); border-color: var(--border); color: var(--foreground); font-size: 12px; }
+.pagination a:hover { background: var(--accent); border-color: var(--primary); color: var(--primary); }
+.pagination [aria-current="page"] > span { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.pagination [aria-disabled="true"] > span, .pagination .cursor-not-allowed { background: var(--muted); color: var(--muted-foreground); }
+.pagination a:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--ring); outline-offset: 2px; box-shadow: none; }
 .retention-notice { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; line-height: 1.7; }
 .issue-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11px; }
 .issue-pagination-actions { display: flex; align-items: center; gap: 8px; }

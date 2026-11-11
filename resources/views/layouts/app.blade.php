@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('theme.js').'?v=2' }}"></script>
 <title>@yield('title', 'Dashboard') · SIVERA</title>
 <link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('sivera-icon.svg').'?v=2' }}">
 @viteReactRefresh

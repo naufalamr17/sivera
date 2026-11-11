@@ -17,9 +17,11 @@ import {
     Menu,
     RefreshCw,
     ShieldCheck,
+    Sun,
     Users,
     FileText,
     WifiOff,
+    Zap,
 } from "lucide-react";
 import {
     Badge,
@@ -482,6 +484,23 @@ function NotificationCenter({ config }) {
     );
 }
 
+function ThemeToggle() {
+    return (
+        <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="theme-toggle"
+            data-theme-toggle
+            aria-label="Switch between Light and Cyberpunk themes"
+            title="Switch between Light and Cyberpunk themes"
+        >
+            <Sun className="theme-sun" />
+            <Zap className="theme-cyberpunk" />
+        </Button>
+    );
+}
+
 function AppChrome({ config }) {
     return (
         <>
@@ -517,6 +536,7 @@ function AppChrome({ config }) {
                     <strong>{config.heading}</strong>
                 </div>
                 <div className="topbar-actions">
+                    <ThemeToggle />
                     <NotificationCenter config={config} />
                 </div>
             </header>
@@ -1108,6 +1128,8 @@ function Dashboard({ config }) {
     );
 }
 
+const authThemeToggle = document.getElementById("auth-theme-toggle");
+if (authThemeToggle) createRoot(authThemeToggle).render(<ThemeToggle />);
 const workspaceData = document.getElementById("workspace-data");
 if (workspaceData)
     createRoot(document.getElementById("workspace-header")).render(

@@ -18,13 +18,13 @@
 </div>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow">EVENT DATA</span><h2>Occurrences</h2></div><span class="muted">Details are sampled after 100 events</span></div>
 @forelse($occurrences as $occurrence)
-<details class="occurrence" @if($loop->first) open @endif><summary><strong>@include('layouts.timestamp', ['value' => $occurrence->occurred_at])</strong><span>{{ $occurrence->event_id }}</span></summary>
+<details class="occurrence" @if($loop->first) open @endif><summary><strong>@include('layouts.timestamp', ['value' => $occurrence->occurred_at, 'eventId' => $occurrence->event_id])</strong><span>{{ $occurrence->event_id }}</span></summary>
 <div class="occurrence-body"><div class="meta-line"><span>User reference: {{ $occurrence->user_reference ?? '—' }}</span><span>Source IP: {{ $occurrence->source_ip ?? '—' }}</span><span>Path: {{ $occurrence->request_metadata_json['path'] ?? '—' }}</span></div>
 <h3>Stack trace</h3><ol class="trace">@forelse($occurrence->stack_trace_json as $frame)<li><strong>{{ $frame['class'] ?? '' }}{{ isset($frame['class']) ? '::' : '' }}{{ $frame['function'] ?? 'unknown' }}</strong><span>{{ $frame['file'] ?? '—' }}{{ isset($frame['line']) ? ':'.$frame['line'] : '' }}</span></li>@empty<li>No frames supplied.</li>@endforelse</ol></div></details>
 @empty <p class="empty">No occurrence details yet.</p> @endforelse
 <div class="pagination">{{ $occurrences->links() }}</div></section>
 <div class="detail-grid">
-<section class="panel"><div class="panel-head"><div><span class="eyebrow">TIMELINE</span><h2>Status history</h2></div></div><ul class="timeline">@forelse($issue->histories->sortByDesc('created_at') as $history)<li><strong>{{ $history->from_status ?? 'NEW' }} → {{ $history->to_status }}</strong><small>@include('layouts.timestamp', ['value' => $history->created_at])</small></li>@empty<li class="empty">No status changes yet.</li>@endforelse</ul></section>
+<section class="panel"><div class="panel-head"><div><span class="eyebrow">TIMELINE</span><h2>Status history</h2></div></div><ul class="timeline">@forelse($issue->histories->sortByDesc('created_at') as $history)<li><strong>{{ $history->from_status ?? 'NEW' }} → {{ $history->to_status }}</strong><small>@include('layouts.timestamp', ['value' => $history->created_at, 'databaseGenerated' => true])</small></li>@empty<li class="empty">No status changes yet.</li>@endforelse</ul></section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow">COLLABORATION</span><h2>Comments</h2></div></div><ul class="timeline">@forelse($issue->comments->sortByDesc('created_at') as $comment)<li><strong>{{ $comment->user?->name ?? 'Inactive user' }}</strong><p>{{ $comment->comment }}</p><small>@include('layouts.timestamp', ['value' => $comment->created_at])</small></li>@empty<li class="empty">No comments yet.</li>@endforelse</ul></section>
 </div>
 @endsection

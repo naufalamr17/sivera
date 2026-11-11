@@ -1,1 +1,1 @@
-{{ $value ? \Carbon\CarbonImmutable::parse($value, 'UTC')->setTimezone(config('sivera.timezone'))->format('d M Y H:i:s T') : '—' }}
+{{ app(\App\Services\Sivera\DisplayTime::class)->format($value, $databaseGenerated ?? false, $eventId ?? null) }}

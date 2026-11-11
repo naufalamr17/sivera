@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Issue;
 use App\Models\IssueAlert;
+use App\Services\Sivera\DisplayTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class NotificationFeedController extends Controller
 {
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, DisplayTime $displayTime): JsonResponse
     {
         $filters = $request->validate(['after' => ['nullable', 'integer', 'min:0']]);
         $after = $filters['after'] ?? null;
@@ -34,7 +35,7 @@ class NotificationFeedController extends Controller
                 'exception_class' => $alert->issue->exception_class,
                 'message' => mb_substr($alert->issue->message, 0, 200),
                 'severity' => $alert->issue->severity,
-                'received_at' => $alert->created_at->toIso8601String(),
+                'received_at' => $displayTime->fromDatabase($alert->created_at)->toIso8601String(),
                 'url' => route('issues.show', $alert->issue),
             ]),
         ])->header('Cache-Control', 'private, no-store');

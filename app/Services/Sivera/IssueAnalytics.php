@@ -11,13 +11,17 @@ use Illuminate\Support\Facades\DB;
 
 class IssueAnalytics
 {
+    public function __construct(private DisplayTime $displayTime) {}
+
     /** @return array<string, mixed> */
     public function summary(string $from, string $to, int $issuesPage = 1): array
     {
         $timezone = config('sivera.timezone');
         $start = CarbonImmutable::parse($from, $timezone)->startOfDay()->utc();
         $end = CarbonImmutable::parse($to, $timezone)->addDay()->startOfDay()->utc();
-        $receipts = EventReceipt::query()->where('created_at', '>=', $start)->where('created_at', '<', $end);
+        $receipts = EventReceipt::query()
+            ->where('created_at', '>=', $this->displayTime->databaseValue($start))
+            ->where('created_at', '<', $this->displayTime->databaseValue($end));
         $counts = (clone $receipts)->selectRaw('issue_id, COUNT(*) as period_count, MAX(created_at) as period_last_seen')->groupBy('issue_id');
         $issues = Issue::query()->joinSub($counts, 'period', 'issues.id', '=', 'period.issue_id');
         $errors = (clone $issues)->whereIn('issues.severity', ['ERROR', 'CRITICAL']);
@@ -31,6 +35,9 @@ class IssueAnalytics
 
         $latest = (clone $issues)->with('application:id,name,slug')->orderByDesc('period_last_seen')->orderBy('issues.id')
             ->paginate(10, ['issues.*', 'period.period_count', 'period.period_last_seen'], 'issues_page', $issuesPage);
+        $latest->getCollection()->each(function (Issue $issue): void {
+            $issue->period_last_seen = $this->displayTime->fromDatabase($issue->period_last_seen)->toIso8601String();
+        });
 
         return [
             'from' => $from,
@@ -67,7 +74,7 @@ class IssueAnalytics
         $counts = (clone $receipts)->selectRaw($bucket.' as bucket, COUNT(*) as total')->groupBy('bucket')->pluck('total', 'bucket');
         $localCounts = [];
         foreach ($counts as $utc => $count) {
-            $key = CarbonImmutable::parse($utc, 'UTC')->setTimezone(config('sivera.timezone'))->format($format);
+            $key = $this->displayTime->fromDatabase($utc)->setTimezone(config('sivera.timezone'))->format($format);
             $localCounts[$key] = ($localCounts[$key] ?? 0) + (int) $count;
         }
 

@@ -13,7 +13,7 @@
 <div class="pagination">{{ $recipients->links() }}</div>
 <section class="panel"><div class="panel-head"><h2>Delivery history</h2><span class="panel-meta">{{ $logs->total() }} deliveries</span></div><div class="table-scroll"><table><thead><tr><th>Created</th><th>Summary date / issue</th><th>Recipient</th><th>Status</th></tr></thead><tbody>
 @forelse ($logs as $log)
-<tr><td>@include('layouts.timestamp', ['value' => $log->created_at])</td><td>@if($log->digest_date){{ $log->digest_date }}@elseif($log->issue)<a class="text-link" href="{{ route('issues.show', $log->issue) }}">{{ $log->issue->exception_class }}</a>@else Historical alert @endif</td><td>{{ $log->recipient_email ?? $log->digest_recipient ?? $log->user?->email ?? $log->rule?->name }}</td><td><span class="badge">{{ ucfirst($log->status) }}</span></td></tr>
+<tr><td>@include('layouts.timestamp', ['value' => $log->created_at, 'databaseGenerated' => true])</td><td>@if($log->digest_date){{ $log->digest_date }}@elseif($log->issue)<a class="text-link" href="{{ route('issues.show', $log->issue) }}">{{ $log->issue->exception_class }}</a>@else Historical alert @endif</td><td>{{ $log->recipient_email ?? $log->digest_recipient ?? $log->user?->email ?? $log->rule?->name }}</td><td><span class="badge">{{ ucfirst($log->status) }}</span></td></tr>
 @empty <tr><td colspan="4" class="empty">No deliveries yet.</td></tr> @endforelse
 </tbody></table></div></section>
 <div class="pagination">{{ $logs->links() }}</div>

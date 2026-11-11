@@ -42,6 +42,7 @@ import {
     notificationHeading,
     notificationTitle,
 } from "./notification-state";
+import { timeLabel, clockLabel, timezoneLabel } from "./display-time";
 
 const icons = {
     overview: LayoutDashboard,
@@ -68,15 +69,6 @@ const storeValue = (key, value) => {
         /* Storage can be disabled. */
     }
 };
-const parseTime = (value) =>
-    new Date(value?.includes("T") ? value : value?.replace(" ", "T") + "Z");
-const timeLabel = (value) =>
-    parseTime(value).toLocaleString("en-GB", {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
 
 function Navigation({ config }) {
     return (
@@ -441,7 +433,7 @@ function NotificationCenter({ config }) {
                                         <strong>{event.application}</strong>
                                         <p>{notificationTitle(event)}</p>
                                         <small>
-                                            {timeLabel(event.received_at)}
+                                            {timeLabel(event.received_at, config.timezone)}
                                             {event.count > 1
                                                 ? " · " +
                                                   event.count +
@@ -536,6 +528,9 @@ function AppChrome({ config }) {
                     <strong>{config.heading}</strong>
                 </div>
                 <div className="topbar-actions">
+                    <span className="timezone-label" title={"Display timezone: " + config.timezone}>
+                        {timezoneLabel(config.timezone)}
+                    </span>
                     <ThemeToggle />
                     <NotificationCenter config={config} />
                 </div>
@@ -718,7 +713,7 @@ function Dashboard({ config }) {
                         Last 7 days
                     </a>
                 </form>
-                <span className="period-timezone">{data.timezone}</span>
+                <span className="period-timezone">{timezoneLabel(data.timezone)}</span>
             </div>
             <div className="dashboard-metrics">
                 {metrics.map(
@@ -1038,7 +1033,7 @@ function Dashboard({ config }) {
                                         {formatCount(issue.period_count)}
                                     </td>
                                     <td className="last-received">
-                                        {timeLabel(issue.period_last_seen)}
+                                        {timeLabel(issue.period_last_seen, data.timezone)}
                                     </td>
                                 </tr>
                             ))}
@@ -1116,7 +1111,7 @@ function Dashboard({ config }) {
                     )}
                     {connected
                         ? "Updated " +
-                          updatedAt.toLocaleTimeString("en-GB") +
+                          clockLabel(updatedAt, data.timezone) +
                           " · Every " +
                           config.pollSeconds +
                           "s"

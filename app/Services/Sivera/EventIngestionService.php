@@ -8,6 +8,7 @@ use App\Models\Issue;
 use App\Models\IssueAlert;
 use App\Models\IssueOccurrence;
 use App\Models\IssueStatusHistory;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -30,6 +31,7 @@ class EventIngestionService
             $file = $this->relativePath($exception['file'] ?? null);
             $route = $this->clean($request['route'] ?? null);
             $now = now();
+            $occurredAt = CarbonImmutable::parse($event['occurred_at'], 'UTC')->utc();
             $statusHistory = null;
             $fingerprint = hash('sha256', implode("\n", [
                 $application->id,
@@ -82,7 +84,7 @@ class EventIngestionService
                 'application_id' => $application->id,
                 'issue_id' => $issue->id,
                 'event_id' => $event['event_id'],
-                'occurred_at' => $event['occurred_at'],
+                'occurred_at' => $occurredAt,
             ]);
             IssueAlert::create(['issue_id' => $issue->id, 'event_receipt_id' => $receipt->id, 'type' => 'event']);
             if ($statusHistory !== null) {
@@ -115,7 +117,7 @@ class EventIngestionService
                     ],
                     'user_reference' => isset($event['user']['id']) ? (string) $event['user']['id'] : null,
                     'source_ip' => $sourceIp,
-                    'occurred_at' => $event['occurred_at'],
+                    'occurred_at' => $occurredAt,
                 ]);
             }
 

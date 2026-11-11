@@ -16,7 +16,7 @@
 @can('admin')<div class="actions"><form method="POST" action="{{ route('credentials.store', $application) }}">@csrf<button class="button primary" type="submit">Generate credential</button></form><form method="POST" action="{{ route('credentials.rotate', $application) }}">@csrf<button class="button" type="submit">Rotate secret</button></form></div>@endcan
 <div class="credential-list">
 @forelse($application->credentials as $credential)
-<div class="credential"><div><strong>{{ $credential->client_id }}</strong><small>{{ $credential->is_active ? ($credential->expires_at ? 'Expires '.$credential->expires_at->format('d M Y H:i') : 'Active') : 'Revoked' }}</small></div>@can('admin')@if($credential->is_active)<form method="POST" action="{{ route('credentials.revoke', [$application, $credential]) }}">@csrf<button class="text-button danger" type="submit">Revoke</button></form>@endif @endcan</div>
+<div class="credential"><div><strong>{{ $credential->client_id }}</strong><small>@if(! $credential->is_active)Revoked@elseif($credential->expires_at)Expires @include('layouts.timestamp', ['value' => $credential->expires_at])@else Active @endif</small></div>@can('admin')@if($credential->is_active)<form method="POST" action="{{ route('credentials.revoke', [$application, $credential]) }}">@csrf<button class="text-button danger" type="submit">Revoke</button></form>@endif @endcan</div>
 @empty <p class="empty">No credentials yet.</p> @endforelse
 </div></section>
 </div>

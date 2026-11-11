@@ -28,8 +28,8 @@ class IssueController extends Controller
                 ? $query->whereNotIn('status', Issue::CLOSED_STATUSES) : $query->where('status', $value))
             ->when($filters['exception_class'] ?? null, fn ($query, $value) => $query->where('exception_class', 'like', '%'.$value.'%'))
             ->when($filters['route'] ?? null, fn ($query, $value) => $query->where('route', 'like', '%'.$value.'%'))
-            ->when($filters['from'] ?? null, fn ($query, $value) => $query->where('last_seen_at', '>=', Carbon::parse($value)->startOfDay()))
-            ->when($filters['to'] ?? null, fn ($query, $value) => $query->where('last_seen_at', '<', Carbon::parse($value)->addDay()->startOfDay()))
+            ->when($filters['from'] ?? null, fn ($query, $value) => $query->where('last_seen_at', '>=', Carbon::parse($value, config('sivera.timezone'))->startOfDay()->utc()))
+            ->when($filters['to'] ?? null, fn ($query, $value) => $query->where('last_seen_at', '<', Carbon::parse($value, config('sivera.timezone'))->addDay()->startOfDay()->utc()))
             ->when($filters['search'] ?? null, function ($query, $value) {
                 $query->where(function ($query) use ($value) {
                     $query->where('exception_class', 'like', '%'.$value.'%')

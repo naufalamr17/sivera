@@ -6,6 +6,8 @@ use App\Models\ApplicationCredential;
 use App\Models\EventReceipt;
 use App\Models\Issue;
 use App\Models\IssueOccurrence;
+use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -108,6 +110,29 @@ it('accepts signed events, groups issues, and keeps duplicate event ids idempote
         ->and(Issue::first()->message)->not->toContain('supersecret')
         ->and(Issue::first()->file)->toBe('app/Services/Invoice.php');
 });
+
+it('normalizes source event timestamps to UTC before storing and displaying them in WIB', function (string $occurredAt) {
+    config()->set('sivera.timezone', 'Asia/Jakarta');
+    $this->travelTo(CarbonImmutable::parse('2026-11-11T07:31:05Z'));
+    $this->credential->update(['valid_from' => now()->subMinute()]);
+    $payload = eventPayload($this->application);
+    $payload['occurred_at'] = $occurredAt;
+
+    sendEvent($this, $this->application, $this->credential, $payload)->assertAccepted();
+
+    $this->assertDatabaseHas('event_receipts', ['event_id' => $payload['event_id'], 'occurred_at' => '2026-11-11 07:31:05']);
+    $this->assertDatabaseHas('issue_occurrences', ['event_id' => $payload['event_id'], 'occurred_at' => '2026-11-11 07:31:05']);
+    $issue = Issue::firstOrFail();
+    expect($issue->last_seen_at->format('Y-m-d H:i:s'))->toBe('2026-11-11 07:31:05');
+
+    $response = $this->actingAs(User::factory()->create())->get(route('issues.show', $issue))->assertOk();
+    expect(substr_count($response->getContent(), '11 Nov 2026 14:31:05 WIB'))->toBe(3);
+})->with([
+    'WIB source' => '2026-11-11T14:31:05+07:00',
+    'negative offset source' => '2026-11-11T02:31:05-05:00',
+    'UTC source' => '2026-11-11T07:31:05Z',
+    'timezone omitted defaults to UTC' => '2026-11-11 07:31:05',
+]);
 
 it('rejects invalid signatures, expired timestamps, replayed nonces, and disabled applications', function () {
     $payload = eventPayload($this->application);

@@ -34,6 +34,7 @@ $workspace = [
     'dashboard' => route('dashboard'),
     'feed' => route('notifications.feed'),
     'pollSeconds' => config('sivera.poll_seconds'),
+    'timezone' => config('sivera.timezone'),
     'icon' => asset('sivera-icon.svg').'?v=3',
 ];
 @endphp

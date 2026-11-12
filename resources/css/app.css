@@ -179,7 +179,8 @@
 .volume-slot { display: flex; align-items: flex-end; flex: 1; height: 100%; min-width: 0; }
 .volume-slot > div { width: 100%; min-width: 1px; max-width: 26px; margin: 0 auto; border-radius: 3px 3px 0 0; background: #0f766e; }
 .volume-slot:hover > div { background: #115e59; }
-.volume-labels { display: flex; justify-content: space-between; gap: 4px; margin-top: 8px; font-size: 10px; color: var(--muted-foreground); }
+.volume-labels { display: flex; gap: 5px; margin-top: 8px; font-size: 10px; color: var(--muted-foreground); }
+.volume-labels > span { flex: 1; min-width: 0; text-align: center; white-space: nowrap; }
 .card-foot { display: flex; justify-content: space-between; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--separator); color: var(--muted-foreground); font-size: 10px; }
 .ranking-card { display: flex; flex-direction: column; }
 .ranking-list { display: flex; flex-direction: column; gap: 18px; flex: 1; padding: 0 22px 22px; margin: 0; list-style: none; }

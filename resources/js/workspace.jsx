@@ -667,6 +667,9 @@ function Dashboard({ config }) {
         1,
         ...data.activity.map((bucket) => bucket.count),
     );
+    const activityLabelStep = data.activity.length <= 7
+        ? 1
+        : Math.ceil(data.activity.length / 5);
     const totalErrors = data.ranking.reduce(
         (sum, app) => sum + Number(app.events),
         0,
@@ -840,23 +843,16 @@ function Dashboard({ config }) {
                                 ))}
                             </div>
                             <div className="volume-labels">
-                                {data.activity
-                                    .filter(
-                                        (_, index) =>
-                                            index %
-                                                Math.max(
-                                                    1,
-                                                    Math.ceil(
-                                                        data.activity.length /
-                                                            5,
-                                                    ),
-                                                ) ===
-                                                0 ||
-                                            index === data.activity.length - 1,
-                                    )
-                                    .map((bucket, index) => (
-                                        <span key={index}>{bucket.label}</span>
-                                    ))}
+                                {data.activity.map((bucket, index) => (
+                                    <span key={index}>
+                                        {index === 0 ||
+                                        index === data.activity.length - 1 ||
+                                        (index % activityLabelStep === 0 &&
+                                            index < data.activity.length - activityLabelStep)
+                                            ? bucket.label
+                                            : ""}
+                                    </span>
+                                ))}
                             </div>
                         </div>
                     </div>

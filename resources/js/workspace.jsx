@@ -15,6 +15,8 @@ import {
     ListFilter,
     LogOut,
     Menu,
+    PanelLeftClose,
+    PanelLeftOpen,
     RefreshCw,
     ShieldCheck,
     Sun,
@@ -73,7 +75,12 @@ const storeValue = (key, value) => {
 function Navigation({ config }) {
     return (
         <>
-            <a className="workspace-brand" href={config.dashboard}>
+            <a
+                className="workspace-brand"
+                href={config.dashboard}
+                aria-label="Sivera workspace"
+                title="Sivera workspace"
+            >
                 <img
                     className="workspace-logo"
                     src={config.icon}
@@ -114,6 +121,8 @@ function Navigation({ config }) {
                             >
                                 <a
                                     href={item.url}
+                                    aria-label={item.label}
+                                    title={item.label}
                                     aria-current={
                                         item.active ? "page" : undefined
                                     }
@@ -127,7 +136,10 @@ function Navigation({ config }) {
                 })}
             </nav>
             <div className="workspace-user">
-                <span className="user-avatar">
+                <span
+                    className="user-avatar"
+                    title={config.user.name + " · " + config.user.role}
+                >
                     {config.user.name.slice(0, 1).toUpperCase()}
                 </span>
                 <div>
@@ -494,6 +506,16 @@ function ThemeToggle() {
 }
 
 function AppChrome({ config }) {
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(
+        () => readStored("sivera.sidebar.collapsed") === "true",
+    );
+    useEffect(() => {
+        document.documentElement.dataset.sidebar = sidebarCollapsed
+            ? "collapsed"
+            : "expanded";
+        storeValue("sivera.sidebar.collapsed", sidebarCollapsed);
+    }, [sidebarCollapsed]);
+
     return (
         <>
             {createPortal(
@@ -502,6 +524,21 @@ function AppChrome({ config }) {
             )}
             <header className="topbar">
                 <div className="topbar-start">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="sidebar-toggle"
+                        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        aria-expanded={!sidebarCollapsed}
+                        aria-controls="workspace-sidebar"
+                        onClick={() =>
+                            setSidebarCollapsed((collapsed) => !collapsed)
+                        }
+                    >
+                        {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+                    </Button>
                     <Sheet>
                         <SheetTrigger asChild>
                             <Button

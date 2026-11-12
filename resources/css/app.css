@@ -329,7 +329,7 @@ label small { color: var(--muted-foreground); font-weight: 400; }
 [data-theme="cyberpunk"] .theme-toggle .theme-sun { display: block; }
 [data-theme="cyberpunk"] .login-card { box-shadow: 0 16px 48px #18122540; }
 [data-theme="cyberpunk"] .nav-item.is-active { color: var(--neon-pink); box-shadow: inset 0 0 0 2px var(--neon-pink); }
-[data-theme="cyberpunk"] .nav-item.is-active svg { color: var(--neon-pink); }
+[data-theme="cyberpunk"] .nav-item.is-active svg { color: var(--neon-green); }
 [data-theme="cyberpunk"] input:focus, [data-theme="cyberpunk"] select:focus, [data-theme="cyberpunk"] textarea:focus { border-color: var(--neon-purple); outline-color: #6a5fc140; }
 [data-theme="cyberpunk"] .button:not(.primary):hover, [data-theme="cyberpunk"] .ui-button.border:hover { border-color: var(--input); color: var(--foreground); }
 [data-theme="cyberpunk"] [data-slot="card"], [data-theme="cyberpunk"] .panel { border-radius: 8px; box-shadow: none; }
